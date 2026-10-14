@@ -4,6 +4,7 @@ import { parseVariantText, variantText } from '../src/pages';
 import { orderTotalCents, toOrder, toPayLink } from '../src/paypal';
 import { priceFor, rank, refundPolicy, UserError } from '../src/store';
 import { kindOf } from '../src/storefront';
+import { describe as describeC3, mainImage, marketOf } from '../src/channel3';
 
 const moisturizer = {
   name: 'Gel Moisturizer',
@@ -109,4 +110,26 @@ it('kindOf picks a packshot that fits the product', () => {
   const k = (name: string, needsShipping = true) => kindOf({ name, description: '', needsShipping });
   expect([k('Oily Skin Starter Set'), k('Barrier Repair Cream'), k('Daily Mineral Sunscreen SPF 40'), k('Clarifying Gel Cleanser'), k('Founder Notebook (A5, dotted)')]).toEqual(['box', 'jar', 'tube', 'bottle', 'book']);
   expect([k('1-hour product design review'), k('Website maintenance', false)]).toEqual(['ticket', 'ticket']);
+});
+
+describe('Channel3 helpers', () => {
+  const p = {
+    id: 'c1',
+    title: 'Oil-Free Gel Moisturizer',
+    description: 'Lightweight gel.',
+    brands: [{ name: 'Clinique' }],
+    images: [{ url: 'https://x/a.jpg', cleaned_url: null, is_main_image: false }, { url: 'https://x/b.jpg', cleaned_url: 'https://x/b-clean.png', is_main_image: true }],
+    key_features: ['Oil-free', 'Non-acnegenic'],
+    offers: [
+      { url: 'u1', domain: 'sephora.com', price: { price: 42, currency: 'USD' }, availability: 'InStock' },
+      { url: 'u2', domain: 'kohls.com', price: { price: 39.5, currency: 'USD' }, availability: 'InStock' },
+      { url: 'u3', domain: 'gone.com', price: { price: 10, currency: 'USD' }, availability: 'OutOfStock' },
+      { url: 'u4', domain: 'uk.com', price: { price: 30, currency: 'GBP' }, availability: 'InStock' },
+    ],
+  };
+  it('prices the market from in-stock offers in the shop currency, and picks the clean main image', () => {
+    expect(marketOf(p)).toEqual({ minCents: 3950, maxCents: 4200, retailers: 2 });
+    expect(mainImage(p)).toBe('https://x/b-clean.png');
+    expect(describeC3(p)).toBe('Lightweight gel.\n\nKey features: Oil-free; Non-acnegenic.\n\nBrand: Clinique.');
+  });
 });

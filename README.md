@@ -56,6 +56,16 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 
 Paying is idempotent: the return page, the webhook and `order_status` all complete a sale, and a conditional update makes sure stock is taken only once.
 
+## How it uses Channel3
+
+[Channel3](https://trychannel3.com)'s product graph (100M+ products across retailers) fills the gaps a small merchant's catalog has:
+
+- **Add from Channel3.** Resellers search the graph and add what they stock. The photo, description, key features and materials come with it, and the merchant sets their own price.
+- **Find this product.** Payment links carry no photos. Matching a product fills in its photo and details; the merchant's own words and photos always win.
+- **Market price.** Matched products track what other retailers charge (in-stock offers, the shop's currency). Merchants see it next to their price, shoppers see "Below retail" on the store page, and the store agent and the MCP tools tell shoppers' agents how the price compares.
+
+It uses the REST API (`/v1/search`, `/v1/products/{id}`) with `CHANNEL3_API_KEY`, and falls back to Channel3's free MCP tier without one.
+
 ## How it uses AI
 
 - **Claude (claude-opus-5-5) is the store agent.** It gets one shop's catalog, notes and the merchant's past answers as a cached system block. It returns structured output `{answer, product_ids, answered}`, and is told to say "the shop hasn't published that" instead of guessing, because another agent may act on its answer. `answered: false` routes the question to the merchant.

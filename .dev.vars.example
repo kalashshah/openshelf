@@ -14,6 +14,8 @@ DEMO_PAYPAL_WEBHOOK_ID=
 PAYPAL_LOGIN_CLIENT_ID=
 PAYPAL_LOGIN_CLIENT_SECRET=
 PAYPAL_LOGIN_ENV=sandbox
+# Optional: Channel3 product graph (trychannel3.com → Dashboard → API). Blank = Channel3's free MCP tier.
+CHANNEL3_API_KEY=
 # Local only
 PUBLIC_URL=http://localhost:8787
 WEBHOOK_VERIFY=

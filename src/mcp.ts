@@ -203,6 +203,7 @@ function compactProduct(env: Env, shop: Shop, p: Product) {
       ? Object.fromEntries(p.variants.map((v) => [v.name, v.options.map((o) => (o.price_cents !== undefined ? `${o.label} (${fmt(o.price_cents, shop.currency)})` : o.label))]))
       : undefined,
     stock: p.stock === null ? undefined : p.stock,
+    elsewhere: p.market ? `${fmt(p.market.minCents, shop.currency)}${p.market.maxCents !== p.market.minCents ? `–${fmt(p.market.maxCents, shop.currency)}` : ''} at ${p.market.retailers} other stores (Channel3)` : undefined,
     summary: p.description.slice(0, 220) || undefined,
     image: p.imageUrl ?? undefined,
     page: `${env.PUBLIC_URL}/s/${shop.slug}#${p.id}`,

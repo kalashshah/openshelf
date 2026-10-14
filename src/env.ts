@@ -14,6 +14,9 @@ export interface Env {
   /** "live" or "sandbox" (default). */
   PAYPAL_LOGIN_ENV?: string;
 
+  /** Channel3 product graph (photos, details, market prices). Absent: Channel3's free MCP tier is used. */
+  CHANNEL3_API_KEY?: string;
+
   /** Backs the store agent and the AI product import. */
   ANTHROPIC_API_KEY: string;
 

@@ -1,10 +1,13 @@
 import { Hono, type Context } from 'hono';
+import { brandOf, describe, getProduct, mainImage, marketOf, searchProducts } from './channel3';
 import { askStore, extractProducts, productsFromUrl, shopContext, type DraftProduct } from './agent';
 import { getAuth, paypalLoginEnabled, sessionUser, type SessionUser } from './auth';
 import type { Env } from './env';
 import { INSTRUCTIONS, registerTools } from './mcp';
 import {
+  catalogPage,
   checkoutResultPage,
+  matchPage,
   errorPage,
   landingPage,
   loginPage,
@@ -348,6 +351,71 @@ app.post('/app/publish', async (c) => {
     return back(c, '/app/products', undefined, `${made ? `Created ${made} links, then: ` : ''}${e instanceof Error ? e.message : String(e)}`);
   }
   return back(c, '/app/products', `Created ${made} PayPal payment links.`);
+});
+
+// ---- Channel3: fill the catalog from the product graph, and price-check against other retailers ----------
+
+app.get('/app/catalog', async (c) => {
+  const q = (c.req.query('q') ?? '').trim();
+  if (!q) return c.html(catalogPage(await chrome(c, 'products'), '', []));
+  if (await overLimit(c, 'channel3')) return c.html(catalogPage(await chrome(c, 'products'), q, [], 'Too many searches at once; try again in a minute.'));
+  try {
+    return c.html(catalogPage(await chrome(c, 'products'), q, await searchProducts(c.env, q, 12)));
+  } catch (e) {
+    return c.html(catalogPage(await chrome(c, 'products'), q, [], e instanceof Error ? e.message : String(e)));
+  }
+});
+
+app.post('/app/catalog/add', async (c) => {
+  const shop = c.get('shop');
+  const f = await c.req.parseBody();
+  const found = await getProduct(c.env, String(f.id ?? ''));
+  if (!found) return back(c, '/app/catalog', undefined, 'That product is no longer in the catalog.');
+  const market = marketOf(found, shop.currency);
+  const brand = brandOf(found);
+  const saved = await new Store(c.env).saveProduct(shop.id, {
+    // "Clinique Oil-Free Gel Moisturizer", not just "Oil-Free Gel Moisturizer": shoppers' agents search by brand.
+    name: brand && !found.title.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${found.title}` : found.title,
+    description: describe(found),
+    // Starts at the lowest price elsewhere; the merchant sets their own on the next screen.
+    priceCents: market?.minCents ?? 0,
+    imageUrl: mainImage(found),
+    source: 'channel3',
+    channel3Id: found.id,
+    market,
+    active: Boolean(market),
+  });
+  return back(c, `/app/products/${saved.id}`, market ? `Added. It sells for ${market.minCents === market.maxCents ? fmt(market.minCents, shop.currency) : `${fmt(market.minCents, shop.currency)}–${fmt(market.maxCents, shop.currency)}`} elsewhere; set your price and stock, then save.` : 'Added but hidden: no live price elsewhere, so set your price and tick "On the shelf".');
+});
+
+app.get('/app/products/:id/match', async (c) => {
+  const p = await new Store(c.env).product(c.req.param('id'));
+  if (!p || p.shopId !== c.get('shop').id) return back(c, '/app/products', undefined, 'No such product');
+  if (await overLimit(c, 'channel3')) return c.html(matchPage(await chrome(c, 'products'), p, [], 'Too many searches at once; try again in a minute.'));
+  try {
+    return c.html(matchPage(await chrome(c, 'products'), p, await searchProducts(c.env, c.req.query('q')?.trim() || p.name, 8)));
+  } catch (e) {
+    return c.html(matchPage(await chrome(c, 'products'), p, [], e instanceof Error ? e.message : String(e)));
+  }
+});
+
+app.post('/app/products/:id/match', async (c) => {
+  const shop = c.get('shop');
+  const store = new Store(c.env);
+  const p = await store.product(c.req.param('id'));
+  if (!p || p.shopId !== shop.id) return back(c, '/app/products', undefined, 'No such product');
+  const f = await c.req.parseBody();
+  const found = await getProduct(c.env, String(f.id ?? ''));
+  if (!found) return back(c, `/app/products/${p.id}`, undefined, 'That product is no longer in the catalog.');
+  // The merchant's own words win: details only fill a thin description, the photo only a missing one.
+  await store.saveProduct(shop.id, {
+    ...p,
+    imageUrl: p.imageUrl || mainImage(found),
+    description: p.description.length >= 160 ? p.description : [p.description, describe(found)].filter(Boolean).join('\n\n'),
+    channel3Id: found.id,
+    market: marketOf(found, shop.currency),
+  });
+  return back(c, `/app/products/${p.id}`, 'Matched on Channel3: photo and details filled in, market price tracked.');
 });
 
 app.get('/app/questions', async (c) => c.html(questionsPage(await chrome(c, 'questions'), await new Store(c.env).questions(c.get('shop').id, 300))));

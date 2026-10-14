@@ -40,6 +40,9 @@ export interface Product {
   stock: number | null;
   /** false = a service or digital product; checkout skips the shipping address. */
   needsShipping: boolean;
+  /** The same product in Channel3's product graph, and its price range at other retailers. */
+  channel3Id: string | null;
+  market: { minCents: number; maxCents: number; retailers: number } | null;
   source: string;
   paypalLinkId: string | null;
   paypalLinkUrl: string | null;
@@ -139,6 +142,8 @@ function productFrom(r: Row): Product {
     variants: JSON.parse(String(r.variants_json || '[]')) as Variant[],
     stock: n(r.stock),
     needsShipping: r.needs_shipping == null ? true : Boolean(r.needs_shipping),
+    channel3Id: s(r.channel3_id),
+    market: r.market_min_cents == null ? null : { minCents: Number(r.market_min_cents), maxCents: Number(r.market_max_cents), retailers: Number(r.market_retailers ?? 0) },
     source: String(r.source),
     paypalLinkId: s(r.paypal_link_id),
     paypalLinkUrl: s(r.paypal_link_url),
@@ -337,11 +342,12 @@ export class Store {
     const id = p.id ?? shortId('p');
     await this.db
       .prepare(
-        `INSERT INTO products (id, shop_id, name, description, price_cents, image_url, variants_json, stock, needs_shipping, source, paypal_link_id, paypal_link_url, active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO products (id, shop_id, name, description, price_cents, image_url, variants_json, stock, needs_shipping, source, paypal_link_id, paypal_link_url, active, created_at, channel3_id, market_min_cents, market_max_cents, market_retailers)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, price_cents = excluded.price_cents,
            image_url = excluded.image_url, variants_json = excluded.variants_json, stock = excluded.stock, needs_shipping = excluded.needs_shipping, active = excluded.active,
-           paypal_link_id = excluded.paypal_link_id, paypal_link_url = excluded.paypal_link_url`,
+           paypal_link_id = excluded.paypal_link_id, paypal_link_url = excluded.paypal_link_url,
+           channel3_id = excluded.channel3_id, market_min_cents = excluded.market_min_cents, market_max_cents = excluded.market_max_cents, market_retailers = excluded.market_retailers`,
       )
       .bind(
         id,
@@ -358,6 +364,10 @@ export class Store {
         p.paypalLinkUrl ?? null,
         p.active === false ? 0 : 1,
         p.createdAt ?? Date.now(),
+        p.channel3Id ?? null,
+        p.market?.minCents ?? null,
+        p.market?.maxCents ?? null,
+        p.market?.retailers ?? null,
       )
       .run();
     return (await this.product(id)) as Product;

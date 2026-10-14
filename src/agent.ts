@@ -43,6 +43,7 @@ export function shopContext(shop: Shop, products: Product[], knowledge: { questi
       `- id ${p.id}: ${p.name}, ${fmt(p.priceCents, shop.currency)}` +
         (p.stock === null ? '' : p.stock === 0 ? ' (sold out)' : ` (${p.stock} in stock)`) +
         (p.needsShipping ? '' : ' (service or digital: nothing is shipped)') +
+        (p.market ? ` (elsewhere ${fmt(p.market.minCents, shop.currency)}${p.market.maxCents !== p.market.minCents ? `–${fmt(p.market.maxCents, shop.currency)}` : ''} at ${p.market.retailers} other stores, per Channel3)` : '') +
         variantText(p.variants, shop.currency),
     );
     if (p.description.trim()) lines.push(`  ${p.description.trim().replace(/\s+/g, ' ')}`);

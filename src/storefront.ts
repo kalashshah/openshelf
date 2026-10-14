@@ -110,13 +110,16 @@ body{background:var(--sf-bg)}
 .pc:hover{box-shadow:0 24px 48px -32px rgba(30,20,10,.45);transform:translateY(-2px)}
 .pc:target{box-shadow:0 0 0 3px var(--accent)}
 .media{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--accent-soft)}
-.media svg,.media img{width:100%;height:100%;display:block;object-fit:cover;transition:transform .6s cubic-bezier(.22,1,.36,1)}
+.media svg,.media img{width:100%;height:100%;display:block;object-fit:cover;}
+/* Photos are product shots, often on white: show the whole product. */
+.media img{object-fit:contain;background:#fff;padding:14px;transition:transform .6s cubic-bezier(.22,1,.36,1)}
 .pc:hover .media svg,.pc:hover .media img{transform:scale(1.035)}
 .flag{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:500}
 .flag.low{color:#9A5B00}.flag.out{color:#B3261E}
 .body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:10px;flex:1}
 .body h3{font-size:17.5px;letter-spacing:-.02em;font-weight:600;margin:0;line-height:1.25}
 .price{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.deal{align-self:flex-start;white-space:nowrap;font-size:12.5px;font-weight:500;color:#1E6B3A;background:#E7F5EC;border-radius:999px;padding:3px 10px}
 .desc{font-size:14px;color:var(--ink2);margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .opts{display:flex;flex-direction:column;gap:6px}.opts .on{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -203,7 +206,7 @@ export function storefrontPage(shop: Shop, products: Product[], v: StorefrontVie
     return `<article class="pc" id="${esc(p.id)}"><div class="media">${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" loading="lazy">` : productArt(p, initial)}${flag}</div>
 <form class="body" method="post" action="/s/${esc(shop.slug)}/buy" data-base="${p.priceCents}"><input type="hidden" name="product_id" value="${esc(p.id)}">
 <div><h3>${esc(p.name)}</h3><div class="top"><div class="price" data-price-out>${esc(fmt(shown, shop.currency))}</div><span class="qty"><button type="button" aria-label="Fewer" onclick="step(this,-1)">−</button><input name="quantity" type="number" min="1" max="99" value="1" aria-label="Quantity"><button type="button" aria-label="More" onclick="step(this,1)">+</button></span></div></div>
-<p class="desc">${esc(p.description)}</p>${opts}
+${p.market && p.market.minCents > shown ? `<span class="deal">Below retail · ${esc(fmt(p.market.minCents, shop.currency))}+ elsewhere</span>` : ''}<p class="desc">${esc(p.description)}</p>${opts}
 <div class="buy"><button class="ppbtn" ${soldOut || !v.canBuy ? 'disabled' : ''}>${soldOut ? 'Sold out' : `${PP} Buy with PayPal`}</button></div>
 <button type="button" class="askthis" onclick="askAbout(${esc(js(p.id))},${esc(js(p.name))})">Ask the shop about this →</button></form></article>`;
   };
