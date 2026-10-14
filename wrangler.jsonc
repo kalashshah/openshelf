@@ -1,9 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "openshelf",
-  "main": "src/index.ts",
+  "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "binding": "ASSETS", "directory": ".open-next/assets" },
   // `wrangler d1 create openshelf` and paste the id it prints.
   "d1_databases": [{ "binding": "DB", "database_name": "openshelf", "database_id": "21cf63c6-6172-4bbd-beda-a6d6692b64c6" }],
   // Store-agent questions and AI imports per caller (they spend model tokens).

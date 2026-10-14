@@ -81,15 +81,20 @@ Requires Node 20+, pnpm and a Cloudflare account.
 pnpm install
 cp .dev.vars.example .dev.vars   # fill in the secrets; generators are in the comments
 npx wrangler d1 create openshelf # paste the id into wrangler.jsonc
-pnpm run db:local && pnpm dev    # http://localhost:8787
-pnpm test                        # pricing, refund policy, search, PayPal shape parsing
+pnpm run db:local && pnpm dev    # http://localhost:3000 (Next dev with the Cloudflare bindings)
+pnpm test                        # pricing, refund policy, search, PayPal shapes, Channel3, schema.org
+pnpm preview                     # the built worker in workerd, as it runs in production
 ```
 
 Deploy: `pnpm run db:remote && pnpm run deploy && pnpm run secrets`. To import payment links, the merchant's PayPal app needs **Payment Links and Buttons** ticked under *Features* in developer.paypal.com.
 
 ## Stack
 
-Cloudflare Workers (Hono), D1, better-auth (Log in with PayPal via generic OAuth, anonymous demo accounts), the MCP TypeScript SDK (stateless Streamable HTTP), the Anthropic TypeScript SDK and PayPal REST. Server-rendered HTML, no frontend build.
+- **Next.js 15 (App Router) on Cloudflare Workers** via [OpenNext](https://opennext.js.org/cloudflare), with D1 for data and a Workers rate limiter on the AI routes.
+- **AlignUI** components on Tailwind v4 (`src/components/ui`): Button, FancyButton, Input, Select, Switch, StatusBadge, Table, Alert, Divider and the app shell, with AlignUI's design tokens in `src/app/globals.css`.
+- **better-auth** for Log in with PayPal (generic OAuth, `openid email profile`) and anonymous demo accounts.
+- **MCP TypeScript SDK** (stateless Streamable HTTP route handlers), the **Anthropic TypeScript SDK** and **PayPal REST**, all in `src/server/`.
+- Server components render every page; server actions handle the dashboard forms; client components are the interactive parts (the store assistant, option pickers, switches).
 
 ## Known limits
 

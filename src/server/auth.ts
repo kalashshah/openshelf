@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { nextCookies } from 'better-auth/next-js';
 import { anonymous, genericOAuth } from 'better-auth/plugins';
 import type { Env } from './env';
 
@@ -23,6 +24,8 @@ export function getAuth(env: Env): Auth {
       // "Try the demo": a judge gets a throwaway account and a seeded shop without an email round-trip.
       anonymous({ emailDomainName: 'demo.openshelf.local' }),
       ...(paypalLoginEnabled(env) ? [paypalLogin(env)] : []),
+      // Lets server actions set auth cookies; must stay last.
+      nextCookies(),
     ],
   }) as unknown as Auth;
   instances.set(env.DB, auth);

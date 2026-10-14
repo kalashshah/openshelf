@@ -1,3 +1,5 @@
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
 export interface Env {
   DB: D1Database;
   /** Caps store-agent questions and AI imports per caller (they cost model tokens). Absent locally. */
@@ -29,4 +31,9 @@ export interface Env {
 
   /** "off" skips PayPal webhook signature checks. Local demos only. */
   WEBHOOK_VERIFY?: string;
+}
+
+/** The Worker's bindings and secrets, inside a request (route handler, server component, server action). */
+export function getEnv(): Env {
+  return getCloudflareContext().env as unknown as Env;
 }

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { pageDigest } from '../src/agent';
-import { parseVariantText, variantText } from '../src/pages';
-import { orderTotalCents, toOrder, toPayLink } from '../src/paypal';
-import { priceFor, rank, refundPolicy, UserError } from '../src/store';
-import { kindOf, productJsonLd } from '../src/storefront';
-import { domainOf, mainImage, marketOf } from '../src/channel3';
+import { pageDigest } from '../src/server/agent';
+import { parseVariantText, variantText } from '../src/server/variants';
+import { orderTotalCents, toOrder, toPayLink } from '../src/server/paypal';
+import { priceFor, rank, refundPolicy, UserError } from '../src/server/store';
+import { kindOf, productJsonLd } from '../src/server/catalog-view';
+import { domainOf, mainImage, marketOf } from '../src/server/channel3';
 
 const moisturizer = {
   name: 'Gel Moisturizer',

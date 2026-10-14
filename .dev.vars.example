@@ -19,5 +19,5 @@ CHANNEL3_API_KEY=
 # Channel3 Partner Program (lists merchants' catalogs in Channel3). Allowlist <PUBLIC_URL>/app/channel3/return as a redirect URI.
 CHANNEL3_PARTNER_KEY=
 # Local only
-PUBLIC_URL=http://localhost:8787
+PUBLIC_URL=http://localhost:3000
 WEBHOOK_VERIFY=
