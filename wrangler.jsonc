@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openshelf",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // `wrangler d1 create openshelf` and paste the id it prints.
+  "d1_databases": [{ "binding": "DB", "database_name": "openshelf", "database_id": "21cf63c6-6172-4bbd-beda-a6d6692b64c6" }],
+  // Store-agent questions and AI imports per caller (they spend model tokens).
+  "ratelimits": [{ "name": "ASK_LIMIT", "namespace_id": "4101", "simple": { "limit": 20, "period": 60 } }],
+  // Login codes by email. Needs a verified Cloudflare Email Sending domain on this account; remove to log codes instead.
+  "send_email": [{ "name": "EMAIL", "remote": true }],
+  "vars": {
+    // Cookies, PayPal return URLs and webhooks are issued for this origin. Change it to yours.
+    "PUBLIC_URL": "https://openshelf.kalashshah47.workers.dev"
+  },
+  // Secrets (`pnpm run secrets` pushes .dev.vars): BETTER_AUTH_SECRET MASTER_KEY ANTHROPIC_API_KEY
+  // [DEMO_PAYPAL_CLIENT_ID DEMO_PAYPAL_CLIENT_SECRET DEMO_PAYPAL_WEBHOOK_ID GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET EMAIL_FROM]
+  "observability": { "enabled": true }
+}

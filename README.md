@@ -1,0 +1,88 @@
+# Open Shelf
+
+**Your PayPal business, ready for AI shoppers.**
+
+Open Shelf turns the products a small business already sells on PayPal into a store that AI agents can search, ask questions of, and buy from. It also gives the business a web shop for people. Every store gets its own **store agent** that answers shoppers' agents from what the merchant has published. When it doesn't know something, it says so and puts the question in the merchant's inbox. Every sale is a PayPal order in the merchant's own account, approved by the buyer in PayPal.
+
+Live: **https://openshelf.kalashshah47.workers.dev** · demo store: [/s/dewdrop](https://openshelf.kalashshah47.workers.dev/s/dewdrop) · agent endpoint: `https://openshelf.kalashshah47.workers.dev/mcp`
+
+```
+Person → their agent      Find me a moisturizer for oily skin, under $30.
+Agent → Open Shelf        search_products("moisturizer oily skin", max_price 30)
+Agent → Dewdrop's agent   ask_store("Will the gel moisturizer clog pores? Any fragrance?")
+Dewdrop's agent           It was tested non-comedogenic by an independent lab and has no added fragrance…
+Agent → Open Shelf        buy(Oil-Free Gel Moisturizer, Size 100 ml, qty 2) → PayPal approval link
+Person                    approves in PayPal → order captured, shows up in Dewdrop's PayPal and dashboard
+Merchant                  adds a USPS tracking number → sent to PayPal → agent's order_status shows it
+Agent → Open Shelf        request_refund("It made my skin break out") → inside the 30-day window → refunded via PayPal
+```
+
+## The problem
+
+Shoppers are starting to send AI agents to find and buy things for them. PayPal's own agentic commerce programs (Agent Ready, Store Sync) need approval and currently cover US physical goods only. A small seller whose "store" is a few PayPal payment links shared on Instagram has no way to be found by an agent, to answer its questions, or to take an order from it.
+
+## What it does
+
+**For merchants**
+- **Bring your shop in one click.** Import your **PayPal payment links** (Pay Links & Buttons API), convert a **Shopify store** exactly (via its public `products.json`), have **Claude read any product page**, or paste a price list or CSV. Options and per-option prices come across too.
+- **A store agent that only says what you've published.** It answers from your catalog, your "about the store" notes and your past answers. Questions it can't answer land in **Questions** marked "needs answer". You answer once, and every future shopper's agent gets that answer.
+- **Orders in your PayPal.** Orders are created with your PayPal app credentials (Orders v2). The buyer picks a shipping address and approves in PayPal. Add a tracking number and it goes to PayPal (Orders tracking API). Refunds go through the Captures API and follow your refund window.
+- **The other direction too.** Products you create here can be published as PayPal payment links you can share anywhere.
+
+**For shoppers and their agents**
+- An MCP server for the **directory of listed stores** (`/mcp`) and one **per store** (`/s/<store>/mcp`). Tools: `list_stores`, `search_products`, `get_product`, `ask_store`, `buy`, `order_status`, `request_refund`.
+- A web storefront for people at `/s/<store>`, with an "Ask the store" chat that talks to the same store agent, plus `/s/<store>/llms.txt` for agents that read rather than call tools.
+- **Nobody is charged without approving.** `buy` returns a PayPal approval link. Prices always come from the catalog, never from the agent.
+
+## Try it (judges)
+
+1. Open https://openshelf.kalashshah47.workers.dev and click **Try it with a demo store**. You get your own copy of the demo skincare shop, wired to a sandbox PayPal app. No sign-up needed.
+2. **As a shopper:** open *View store*, ask "Which moisturizer suits oily skin? Is it safe in pregnancy?", then buy something. At PayPal choose **Pay with Credit or Debit Card**, set the country to United States, and use the sandbox test Visa `4005 5192 0000 0004`, any future expiry, CVV `123`, and any US address. Or log in with any PayPal sandbox personal account.
+3. **As an agent:** in Claude, go to *Settings → Connectors → Add custom connector* and paste the store endpoint shown on your Overview page (or `https://openshelf.kalashshah47.workers.dev/mcp` for the directory). Then ask: *"Find me something from Dewdrop for oily skin under $30, check it won't clog pores, and buy it."*
+4. **As the merchant:** watch the question and order appear on Overview. Answer the pregnancy question under *Questions* and ask again. Mark the order shipped with a tracking number, or refund it under *Orders*.
+5. **Bring a real shop:** under *Products*, paste a Shopify store URL (e.g. `https://hydrogen-preview.myshopify.com`) or a price list.
+
+## How it uses PayPal
+
+| PayPal API | Used for |
+|---|---|
+| OAuth2 client credentials | per-merchant access tokens (each merchant's own app; secrets sealed with AES-GCM) |
+| **Orders v2** create / get / capture | every purchase, agent or human; `shipping_preference: GET_FROM_FILE`, so PayPal collects the address |
+| **Orders v2 tracking** (`/v2/checkout/orders/{id}/track`) | merchant's tracking number goes to PayPal and the buyer |
+| **Payments v2 captures refund** | shopper refunds inside the store's window, merchant refunds anytime |
+| **Payment Links & Buttons** (`/v1/checkout/payment-resources`) | importing a merchant's existing payment links as products, and publishing products back as links |
+| **Webhooks** + verify-webhook-signature | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`, which complete a sale even if the buyer never returns to the site |
+
+Paying is idempotent: the return page, the webhook and `order_status` all complete a sale, and a conditional update makes sure stock is taken only once.
+
+## How it uses AI
+
+- **Claude (claude-opus-5-5) is the store agent.** It gets one shop's catalog, notes and the merchant's past answers as a cached system block. It returns structured output `{answer, product_ids, answered}`, and is told to say "the shop hasn't published that" instead of guessing, because another agent may act on its answer. `answered: false` routes the question to the merchant.
+- **Claude reads existing shops.** For a product page, it gets the page's JSON-LD, image URLs and text and returns a typed catalog (names, prices, options, images). Shopify stores skip the model and convert exactly.
+- **The shopper's own agent** (Claude, ChatGPT, anything that speaks MCP) does the shopping through the MCP tools.
+
+## Run it yourself
+
+Requires Node 20+, pnpm and a Cloudflare account.
+
+```bash
+pnpm install
+cp .dev.vars.example .dev.vars   # fill in the secrets; generators are in the comments
+npx wrangler d1 create openshelf # paste the id into wrangler.jsonc
+pnpm run db:local && pnpm dev    # http://localhost:8787
+pnpm test                        # pricing, refund policy, search, PayPal shape parsing
+```
+
+Deploy: `pnpm run db:remote && pnpm run deploy && pnpm run secrets`. To import payment links, the merchant's PayPal app needs **Payment Links and Buttons** ticked under *Features* in developer.paypal.com.
+
+## Stack
+
+Cloudflare Workers (Hono), D1, better-auth (email code, Google, anonymous demo accounts), the MCP TypeScript SDK (stateless Streamable HTTP), the Anthropic TypeScript SDK and PayPal REST. Server-rendered HTML, no frontend build.
+
+## Known limits
+
+- Search is keyword ranking in memory, which is fine for hundreds of products. Swap in D1 FTS or Vectorize for a big directory.
+- One currency per store, and shipping is included in prices (PayPal collects the address).
+- Payment links carry no images or stock, so imported products start with a tinted placeholder and untracked stock until the merchant edits them.
+
+MIT licensed.

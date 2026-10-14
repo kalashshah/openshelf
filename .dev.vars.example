@@ -1,0 +1,18 @@
+# Copy to .dev.vars for `wrangler dev`; `pnpm run secrets` pushes the same to production.
+# Generate the first two: openssl rand -hex 32  /  openssl rand -base64 32
+BETTER_AUTH_SECRET=
+MASTER_KEY=
+# The store agent and the AI importer (console.anthropic.com → API keys).
+ANTHROPIC_API_KEY=
+# A sandbox PayPal app (developer.paypal.com → Apps & Credentials) that demo stores check out through.
+DEMO_PAYPAL_CLIENT_ID=
+DEMO_PAYPAL_CLIENT_SECRET=
+# Optional: a webhook on that app pointing at <PUBLIC_URL>/webhooks/paypal/demo, so its signatures verify.
+DEMO_PAYPAL_WEBHOOK_ID=
+# Optional: Google sign-in (redirect URI <PUBLIC_URL>/api/auth/callback/google) and the login-code sender.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+EMAIL_FROM=
+# Local only
+PUBLIC_URL=http://localhost:8787
+WEBHOOK_VERIFY=
