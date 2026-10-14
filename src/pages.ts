@@ -56,7 +56,7 @@ export function landingPage(publicUrl: string): string {
     `<nav class="app">${LOGO}<div class="right"><a class="btn sm" href="/s/dewdrop">Demo store</a><a class="btn sm dark" href="/login">Sign in</a></div></nav>
 <section class="hero"><p class="mono rise">For PayPal merchants</p><h1 class="rise" style="--d:.05s">Your PayPal business, ready for AI shoppers.</h1>
 <p class="sub rise" style="--d:.1s">Open Shelf turns the payment links and products you already sell into a store that AI agents can search, question and buy from. It also gives you a web shop for people. Your store gets its own agent that answers shoppers' agents from what you've published. When it doesn't know something, it says so and asks you. Every sale is paid through PayPal, and the buyer approves it.</p>
-<div class="row rise" style="--d:.15s;margin-top:22px"><button class="btn dark lg" onclick="demo(this)">Try it with a demo store</button><a class="btn lg" href="/login">Set up my store</a></div>
+<div class="row rise" style="--d:.15s;margin-top:22px"><button class="btn dark lg" onclick="demo(this)">Try it with a demo store</button><a class="btn lg" href="/login">${PAYPAL_MARK}Set up my store with PayPal</a></div>
 <p id="err" class="small" style="color:var(--red);display:none"></p></section>
 
 <pre class="convo rise" style="--d:.2s"><i>Person → their agent</i>   Find me a moisturizer for oily skin, under $30.
@@ -82,29 +82,23 @@ function demo(b){b.disabled=true;b.textContent='Setting up your demo store…';p
   );
 }
 
-const GOOGLE = `<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
-
 const PAYPAL_MARK = `<svg class="gmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#003087" d="M7.3 21.2H3.9a.5.5 0 0 1-.5-.6L6.1 3.4A.8.8 0 0 1 6.9 2.7h6.3c3.3 0 5.4 1.7 4.8 5-.7 3.9-3.3 5.6-7 5.6H9.4a.8.8 0 0 0-.8.7z"/><path fill="#0070E0" d="M18.6 7.6c-.7 3.8-3.3 5.9-6.9 5.9h-1.2a.8.8 0 0 0-.8.7l-1 6.3-.3 1.7a.5.5 0 0 0 .5.6h3a.7.7 0 0 0 .7-.6l.7-4.5a.7.7 0 0 1 .7-.6h.6c3 0 5.2-1.6 5.8-4.8.4-2.1-.2-3.6-1.8-4.7z"/></svg>`;
 
-export function loginPage(opts: { google: boolean; paypal: boolean; next?: string }): string {
+export function loginPage(opts: { paypal: boolean; error?: string; next?: string }): string {
   return layout(
     'Sign in · Open Shelf',
-    `<div class="auth"><div class="rise">${LOGO}</div><h1 class="rise" style="--d:.05s">Open your shelf.</h1><p class="sub rise" style="--d:.1s">Sign in with a one-time code. No password to remember.</p>
-<div class="card rise" style="--d:.15s;margin:0"><div id="step1"><div class="fld" style="margin-top:0"><label class="f" for="email">Email</label><input class="f" id="email" type="email" autocomplete="email" placeholder="you@yourshop.com"></div>
-<button class="btn dark block lg" style="margin-top:16px" onclick="sendCode()">Email me a code</button>
-${opts.paypal || opts.google ? '<div class="or">or</div>' : ''}${opts.paypal ? `<button class="btn block lg" onclick="social('paypal')">${PAYPAL_MARK}Log in with PayPal</button>` : ''}${opts.google ? `<button class="btn block lg" style="margin-top:8px" onclick="social('google')">${GOOGLE}Continue with Google</button>` : ''}</div>
-<div id="step2" style="display:none"><p class="sub" style="margin:0">We sent a 6-digit code to <b id="sentTo"></b>.</p><div class="fld"><label class="f" for="otp">Code</label><input class="f otp" id="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" maxlength="6"></div>
-<button class="btn dark block lg" style="margin-top:16px" onclick="verify()">Sign in</button><p class="small muted" style="text-align:center;margin:14px 0 0"><a href="#" onclick="back();return false">Use a different email</a></p></div>
-<p id="err" class="small" style="color:var(--red);display:none;margin:12px 0 0"></p></div>
+    `<div class="auth"><div class="rise">${LOGO}</div><h1 class="rise" style="--d:.05s">Open your shelf.</h1><p class="sub rise" style="--d:.1s">Sign in with the PayPal account you sell with. Payments from shoppers and their agents go straight into it.</p>
+<div class="card rise" style="--d:.15s;margin:0">${
+      opts.paypal
+        ? `<button class="btn dark block lg" onclick="social(this)">${PAYPAL_MARK}Log in with PayPal</button><p class="small muted" style="text-align:center;margin:12px 0 0">This demo runs on the PayPal sandbox: use a sandbox account from developer.paypal.com → Testing Tools → Sandbox accounts.</p>`
+        : '<p class="empty">PayPal sign-in is not configured on this deployment.</p>'
+    }
+<p id="err" class="small" style="color:var(--red);display:${opts.error ? 'block' : 'none'};margin:12px 0 0">${opts.error ? `PayPal sign-in didn't complete (${esc(opts.error.replace(/_/g, ' '))}). Try again.` : ''}</p></div>
 <p class="small muted" style="text-align:center;margin-top:18px">Just looking? <a href="/">Try the demo store</a> without an account.</p></div>`,
     {
       script: `var NEXT=${js(opts.next ?? '/app')};${POST_JS}
 function err(m){var e=document.getElementById('err');e.textContent=m;e.style.display=m?'block':'none'}
-function sendCode(){var email=document.getElementById('email').value.trim();if(!email)return err('Enter your email');err('');post('/api/auth/email-otp/send-verification-otp',{email:email,type:'sign-in'}).then(function(r){if(!r.ok)return err(r.j.message||'Could not send the code');document.getElementById('sentTo').textContent=email;document.getElementById('step1').style.display='none';document.getElementById('step2').style.display='block';document.getElementById('otp').focus()})}
-function verify(){var email=document.getElementById('email').value.trim();var otp=document.getElementById('otp').value.trim();if(otp.length<6)return err('Enter the 6-digit code');err('');post('/api/auth/sign-in/email-otp',{email:email,otp:otp}).then(function(r){if(!r.ok)return err(r.j.message||'That code did not work');location.href=NEXT})}
-function back(){document.getElementById('step2').style.display='none';document.getElementById('step1').style.display='block'}
-function social(p){post('/api/auth/sign-in/social',{provider:p,callbackURL:NEXT,errorCallbackURL:'/login'}).then(function(r){if(r.j.url)location.href=r.j.url;else err((r.j&&r.j.message)||'That sign-in is not available')})}
-document.getElementById('otp').addEventListener('keydown',function(e){if(e.key==='Enter')verify()});document.getElementById('email').addEventListener('keydown',function(e){if(e.key==='Enter')sendCode()});`,
+function social(b){b.disabled=true;post('/api/auth/sign-in/social',{provider:'paypal',callbackURL:NEXT,errorCallbackURL:'/login'}).then(function(r){if(r.j.url)location.href=r.j.url;else{b.disabled=false;err((r.j&&r.j.message)||'PayPal sign-in is not available')}})}`,
     },
   );
 }

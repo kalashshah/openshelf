@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { askStore, extractProducts, productsFromUrl, shopContext, type DraftProduct } from './agent';
-import { getAuth, googleEnabled, paypalLoginEnabled, sessionUser, type SessionUser } from './auth';
+import { getAuth, paypalLoginEnabled, sessionUser, type SessionUser } from './auth';
 import type { Env } from './env';
 import { INSTRUCTIONS, registerTools } from './mcp';
 import {
@@ -32,7 +32,7 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth(c.env).handler(c.req.raw))
 app.get('/', async (c) => ((await sessionUser(c.env, c.req.raw.headers)) ? c.redirect('/app') : c.html(landingPage(c.env.PUBLIC_URL))));
 app.get('/login', (c) => {
   const next = c.req.query('next');
-  return c.html(loginPage({ google: googleEnabled(c.env), paypal: paypalLoginEnabled(c.env), next: next?.startsWith('/') ? next : '/app' }));
+  return c.html(loginPage({ paypal: paypalLoginEnabled(c.env), error: c.req.query('error'), next: next?.startsWith('/') ? next : '/app' }));
 });
 
 /** Store-agent questions and AI imports cost model tokens, so each caller gets a budget. */

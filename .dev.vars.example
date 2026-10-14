@@ -9,10 +9,11 @@ DEMO_PAYPAL_CLIENT_ID=
 DEMO_PAYPAL_CLIENT_SECRET=
 # Optional: a webhook on that app pointing at <PUBLIC_URL>/webhooks/paypal/demo, so its signatures verify.
 DEMO_PAYPAL_WEBHOOK_ID=
-# Optional: Google sign-in (redirect URI <PUBLIC_URL>/api/auth/callback/google) and the login-code sender.
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-EMAIL_FROM=
+# Log in with PayPal: an app with that feature on, email + name attributes ticked,
+# and <PUBLIC_URL>/api/auth/callback/paypal as a return URL. Can be the same app as above.
+PAYPAL_LOGIN_CLIENT_ID=
+PAYPAL_LOGIN_CLIENT_SECRET=
+PAYPAL_LOGIN_ENV=sandbox
 # Local only
 PUBLIC_URL=http://localhost:8787
 WEBHOOK_VERIFY=

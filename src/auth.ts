@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth';
-import { anonymous, emailOTP, genericOAuth } from 'better-auth/plugins';
+import { anonymous, genericOAuth } from 'better-auth/plugins';
 import type { Env } from './env';
 
 type Auth = ReturnType<typeof betterAuth>;
@@ -10,9 +10,6 @@ const instances = new WeakMap<object, Auth>();
 export function getAuth(env: Env): Auth {
   const cached = instances.get(env.DB);
   if (cached) return cached;
-  const socialProviders = {
-    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
-  };
   // Cast once: better-auth's plugin generics make the configured type incompatible with the plain one.
   const auth = betterAuth({
     database: env.DB as unknown as never,
@@ -21,17 +18,8 @@ export function getAuth(env: Env): Auth {
     trustedOrigins: [env.PUBLIC_URL],
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
-    socialProviders,
-    // Same email through a code, Google or PayPal = same account and shop.
-    account: { accountLinking: { enabled: true, trustedProviders: ['google', 'paypal'] } },
+    // Merchants sign in with PayPal only; the demo button makes an anonymous account.
     plugins: [
-      emailOTP({
-        otpLength: 6,
-        expiresIn: 600,
-        async sendVerificationOTP({ email, otp }) {
-          await sendEmail(env, { to: email, subject: 'Your Open Shelf login code', text: `Your Open Shelf login code is ${otp}. It expires in 10 minutes.`, html: otpHtml(otp) });
-        },
-      }),
       // "Try the demo": a judge gets a throwaway account and a seeded shop without an email round-trip.
       anonymous({ emailDomainName: 'demo.openshelf.local' }),
       ...(paypalLoginEnabled(env) ? [paypalLogin(env)] : []),
@@ -60,9 +48,6 @@ export async function sessionUser(env: Env, headers: Headers): Promise<SessionUs
   }
 }
 
-export function googleEnabled(env: Env): boolean {
-  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
-}
 
 /**
  * Log in with PayPal. Generic OAuth rather than better-auth's built-in provider, which sends no scope
@@ -99,17 +84,4 @@ function paypalLogin(env: Env) {
 
 export function paypalLoginEnabled(env: Env): boolean {
   return Boolean(env.PAYPAL_LOGIN_CLIENT_ID && env.PAYPAL_LOGIN_CLIENT_SECRET);
-}
-
-/** Login codes go out through Cloudflare Email Sending; with no binding they are logged, so local login still works. */
-async function sendEmail(env: Env, m: { to: string; subject: string; text: string; html: string }): Promise<void> {
-  if (!env.EMAIL) {
-    console.log(`[email:dev] to=${m.to} subject="${m.subject}"\n${m.text}`);
-    return;
-  }
-  await env.EMAIL.send({ ...m, from: env.EMAIL_FROM || 'shelf@mail.llamacalls.com' });
-}
-
-function otpHtml(otp: string): string {
-  return `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#15171c;padding:32px"><div style="max-width:480px;margin:0 auto;text-align:center"><div style="font-weight:700;font-size:20px">Open Shelf</div><p style="margin:24px 0 16px">Here is your login code.</p><div style="display:inline-block;background:#eef2fb;border-radius:12px;padding:20px 28px;font:700 34px/1 Menlo,monospace;letter-spacing:8px">${otp}</div><p style="color:#68707f;font-size:14px;margin-top:24px">It expires in 10 minutes. If you didn't ask for it, ignore this email.</p></div></body></html>`;
 }

@@ -1,7 +1,5 @@
 export interface Env {
   DB: D1Database;
-  /** Cloudflare Email Sending binding for login codes. Absent: codes are logged (local dev). */
-  EMAIL?: { send(message: { to: string; from: string; subject: string; html?: string; text?: string }): Promise<void> };
   /** Caps store-agent questions and AI imports per caller (they cost model tokens). Absent locally. */
   ASK_LIMIT?: RateLimit;
 
@@ -10,9 +8,6 @@ export interface Env {
   BETTER_AUTH_SECRET: string;
   /** Base64 32-byte AES key; seals every shop's PayPal secret at rest. */
   MASTER_KEY: string;
-  GOOGLE_CLIENT_ID?: string;
-  GOOGLE_CLIENT_SECRET?: string;
-  EMAIL_FROM?: string;
   /** Log in with PayPal (a PayPal app with that feature on). Absent: the button is hidden. */
   PAYPAL_LOGIN_CLIENT_ID?: string;
   PAYPAL_LOGIN_CLIENT_SECRET?: string;
