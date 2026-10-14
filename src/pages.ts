@@ -47,57 +47,92 @@ function tint(p: Pick<Product, 'name' | 'imageUrl'>): string {
 }
 
 export function errorPage(message: string): string {
-  return layout('Something went wrong · Open Shelf', `<nav class="app">${LOGO}</nav><div class="card"><h2>Something went wrong</h2><p class="muted">${esc(message)}</p><a class="btn" href="/">Back</a></div>`);
+  return layout('Something went wrong · Open Shelf', `${siteHeader([], '<a class="pb dark sm" href="/">Home</a>')}<div class="wrap" style="max-width:640px;padding-top:56px"><div class="card"><h2>Something went wrong</h2><p class="muted">${esc(message)}</p><a class="btn" href="/">Back</a></div></div>`, { bare: true });
 }
 
 // ---- landing + login -------------------------------------------------------------------
 
+/** The site header every public page shares: 56px, sticky, full-width hairline. */
+export function siteHeader(nav: [string, string][], end: string): string {
+  return `<header class="hdr"><div class="in">${LOGO}<nav>${nav.map(([href, label]) => `<a href="${href}">${esc(label)}</a>`).join('')}</nav><div class="end">${end}</div></div></header>`;
+}
+
+export function siteFooter(): string {
+  return `<footer class="foot"><div class="container"><div>${LOGO}<p>Turns a PayPal business into a store AI agents can ask questions of and buy from, and lists it where agents shop.</p></div>
+<div><h4>Open Shelf</h4><a href="/#how">How it works</a><a href="/s/dewdrop">Demo store</a><a href="/login">Set up with PayPal</a></div>
+<div><h4>For agents</h4><a href="/mcp">MCP directory</a><a href="/sitemap.xml">sitemap.xml</a><a href="/s/dewdrop/llms.txt">llms.txt</a></div>
+<div><h4>Built with</h4><a href="https://developer.paypal.com" target="_blank" rel="noopener">PayPal</a><a href="https://www.anthropic.com" target="_blank" rel="noopener">Claude</a><a href="https://trychannel3.com" target="_blank" rel="noopener">Channel3</a></div></div>
+<div class="container bar"><span>© 2026 Open Shelf · built for the PayPal AI Hackathon</span><span>Sandbox demo: nothing real is charged.</span></div></footer>`;
+}
+
 export function landingPage(publicUrl: string): string {
+  const demoBtn = (cls: string, label: string) => `<button class="pb ${cls}" onclick="demo(this)">${label}</button>`;
   return layout(
     'Open Shelf',
-    `<nav class="app">${LOGO}<div class="right"><a class="btn sm" href="/s/dewdrop">Demo store</a><a class="btn sm dark" href="/login">Sign in</a></div></nav>
-<section class="hero"><p class="mono rise">For PayPal merchants</p><h1 class="rise" style="--d:.05s">Your PayPal business, ready for AI shoppers.</h1>
-<p class="sub rise" style="--d:.1s">Open Shelf turns the payment links and products you already sell into a store that AI agents can search, question and buy from. It also gives you a web shop for people. Your store gets its own agent that answers shoppers' agents from what you've published. When it doesn't know something, it says so and asks you. Every sale is paid through PayPal, and the buyer approves it.</p>
-<div class="row rise" style="--d:.15s;margin-top:22px"><button class="btn dark lg" onclick="demo(this)">Try it with a demo store</button><a class="btn lg" href="/login">${PAYPAL_MARK}Set up my store with PayPal</a></div>
-<p id="err" class="small" style="color:var(--red);display:none"></p></section>
-
-<pre class="convo rise" style="--d:.2s"><i>Person → their agent</i>   Find me a moisturizer for oily skin, under $30.
-<i>Agent → Open Shelf</i>     search_products("moisturizer oily skin", max_price 30)
-<i>Agent → Dewdrop's agent</i> ask_store("Will the gel moisturizer clog pores? Any fragrance?")
-<b>Dewdrop's agent</b>         It's tested non-comedogenic by an independent lab and has no added fragrance.
-                         Niacinamide 4% helps balance oil. $24 for 50 ml, $38 for 100 ml.
-<i>Agent → Open Shelf</i>     buy(Oil-Free Gel Moisturizer, Size 50 ml)  →  PayPal approval link
-<i>Person</i>                 approves in PayPal  →  <b>paid, and it shows up in Dewdrop's PayPal and dashboard</b></pre>
-
-<div class="steps">
-<div class="step rise" style="--d:.25s"><div class="k">01 · bring your shop</div><h3 style="margin:6px 0">Import what you already sell</h3><p class="small muted" style="margin:0">Your PayPal payment links, a Shopify store, any product page, or a price list you paste. Claude turns it into a clean catalog in a minute.</p></div>
-<div class="step rise" style="--d:.3s"><div class="k">02 · your store agent</div><h3 style="margin:6px 0">It answers from your own words</h3><p class="small muted" style="margin:0">Shoppers' agents ask about skin types, sizes and shipping. Questions it can't answer go to your inbox, and your answer teaches it for next time.</p></div>
-<div class="step rise" style="--d:.35s"><div class="k">03 · get paid</div><h3 style="margin:6px 0">PayPal checkout, refunds, tracking</h3><p class="small muted" style="margin:0">Orders are created in your PayPal account. The buyer approves in PayPal, tracking goes back to PayPal, and refunds follow your policy.</p></div></div>
-
-<div class="agentbox rise" style="--d:.4s"><div class="mono">For agents</div><p style="margin:6px 0 10px">Add the Open Shelf directory to Claude, ChatGPT or any MCP client to shop every listed store:</p><code>${esc(publicUrl)}/mcp</code><p class="small" style="margin:12px 0 0;color:#b9b6b2">Tools: list_stores, search_products, get_product, ask_store, buy, order_status, request_refund. Each store also has its own endpoint at <code>/s/&lt;store&gt;/mcp</code>.</p></div>
-<p class="small muted">Built for the PayPal AI Hackathon. Payments run on PayPal Orders v2 (sandbox in the demo). The store agent and importer run on Claude.</p>`,
+    `${siteHeader(
+      [['#how', 'How it works'], ['#agents', 'For agents'], ['/s/dewdrop', 'Demo store']],
+      `${demoBtn('lime sm', 'Try the demo')}<a class="pb dark sm" href="/login">${PAYPAL_MARK_W} Set up with PayPal</a>`,
+    )}
+<section><div class="container hero2">
+<div><span class="badge-pill rise"><span class="ck">✓</span>PayPal checkout · Claude store agent · listed on Channel3</span>
+<h1 class="h1x rise" style="--d:.05s">Your PayPal shop, ready for <span class="mark">AI shoppers.</span></h1>
+<p class="lead rise" style="--d:.1s">Open Shelf turns what you already sell on PayPal into a store that AI agents can search, question and buy from. Your store gets its own agent that answers from what you've published and asks you when it doesn't know. Every sale is a PayPal order the buyer approves.</p>
+<div class="row rise" style="--d:.15s;margin-top:28px;gap:10px"><a class="pb dark" href="/login" style="height:46px">${PAYPAL_MARK_W}<span class="two">Set up with PayPal<small><span class="dot" style="width:6px;height:6px"></span>Ready in a minute</small></span></a>${demoBtn('', 'Try a demo store')}</div>
+<p class="cap rise" style="--d:.2s">Free during the hackathon · runs on the PayPal sandbox</p>
+<p id="err" class="small" style="color:var(--red);display:none"></p></div>
+<div class="frame rise" style="--d:.15s"><div class="vis" style="aspect-ratio:auto;display:block;padding:22px;background:linear-gradient(160deg,#FBFDF3,#F1F0EA)">
+<div class="mock" style="font-size:13px"><div class="small muted" style="margin-bottom:4px">Your agent · shopping Dewdrop Skincare</div>
+<div class="bub a">Find a moisturizer for oily skin under $30. Will it clog pores?</div>
+<div class="bub b"><b>Dewdrop's store agent:</b> The Oil-Free Gel Moisturizer is lab-tested non-comedogenic, with no added fragrance. $24 for 50 ml.</div>
+<div class="bub a">Buy the 50 ml.</div></div>
+<div class="mock" style="margin-top:12px"><div class="r"><span class="ic">◫</span>Oil-Free Gel Moisturizer · 50 ml<span class="ok">$24.00</span></div><div class="r"><span class="ic">P</span>Approved in PayPal by the buyer<span class="ok">✓</span></div><div class="r"><span class="ic">↗</span>In Dewdrop's PayPal and dashboard<span class="ok">✓</span></div></div></div></div>
+</div></section>
+<div class="statband"><div class="container">
+<div class="cell"><b>Bring what you already sell</b><span>PayPal payment links, invoices, a Shopify store or any product page</span></div>
+<div class="cell"><b>A store agent that knows your shop</b><span>Answers from your words, says when it doesn't know, and learns your answers</span></div>
+<div class="cell"><b>Every order is a PayPal order</b><span>Approved by the buyer, with tracking and refunds in policy</span></div>
+<div class="cell"><b>Listed where agents shop</b><span>Channel3's product graph, then ChatGPT, Google, Copilot and PayPal</span></div></div></div>
+<section class="section alt center" id="how"><div class="container"><h2 class="h2x">How it works</h2><p class="sec-lead">From your PayPal account to orders placed by AI agents.</p>
+<div class="how">
+<div><div class="frame"><div class="vis"><span class="stepnum">1</span><div class="mock"><div class="r"><span class="ic">P</span>Log in with PayPal<span class="ok">✓</span></div><div class="r"><span class="ic">$</span>Payments go to your account<span class="ok">✓</span></div><div class="r"><span class="ic">◫</span>Store page created<span class="ok">✓</span></div></div></div></div><h3>Log in with PayPal</h3><p>No keys to paste. Shoppers' money goes straight into the PayPal account you sign in with.</p></div>
+<div><div class="frame"><div class="vis"><span class="stepnum">2</span><div class="mock"><div class="r"><span class="ic">⛓</span>8 payment links<span class="ok">✓</span></div><div class="r"><span class="ic">≡</span>Invoices → 5 services<span class="ok">✓</span></div><div class="r"><span class="ic">S</span>Shopify · 60 products<span class="ok">✓</span></div></div></div></div><h3>Bring what you sell</h3><p>Import payment links and invoices from PayPal, a Shopify store, any page or a pasted price list.</p></div>
+<div><div class="frame"><div class="vis"><span class="stepnum">3</span><div class="mock"><div class="bub a">Does it ship to Canada?</div><div class="bub b">Not yet. Passed to the owner.</div><div class="small muted" style="margin-top:6px">→ in your Questions inbox</div></div></div></div><h3>Your store agent answers</h3><p>It answers shoppers' agents from what you've published. Answer what it didn't know once, and it knows for good.</p></div>
+<div><div class="frame"><div class="vis"><span class="stepnum">4</span><div class="mock"><div class="r"><span class="ic">P</span>Paid with PayPal<span class="ok">✓</span></div><div class="r"><span class="ic">→</span>Tracking sent to PayPal<span class="ok">✓</span></div><div class="r"><span class="ic">C3</span>Listed on Channel3<span class="ok">✓</span></div></div></div></div><h3>Sold, shipped, found</h3><p>Orders land in your PayPal. Tracking goes back to PayPal, and Channel3 carries your catalog to AI shopping apps.</p></div>
+</div>
+<div style="margin-top:44px"><a class="pb" href="/login" style="height:52px;padding:0 24px 0 8px;box-shadow:0 14px 30px -22px rgba(0,0,0,.4)"><span class="float av" style="position:static;padding:0;width:36px;height:36px;border:0;box-shadow:none;background:var(--ink);color:#fff">${PAYPAL_MARK_W}</span>It starts with one login. Set up with PayPal</a><p class="cap">Free and sandbox-only during the hackathon</p></div></div></section>
+<section class="section dark" id="agents"><div class="container"><div class="split"><div><div class="eyeline">For AI agents</div><h2 class="h2x">Any agent can shop here.</h2></div>
+<div><p class="sec-lead" style="margin:0 0 16px">Add the Open Shelf directory to Claude, ChatGPT or any MCP client to shop every listed store. Each store also has its own endpoint.</p><div class="codebox"><span id="mcpd">${esc(publicUrl)}/mcp</span><button onclick="navigator.clipboard.writeText(document.getElementById('mcpd').textContent);this.textContent='Copied ✓'">Copy</button></div></div></div>
+<div class="cols"><div class="it"><div class="k">01 · Find</div><div class="t">search_products, list_stores</div><div class="d">Every listed store's catalog, by what the person needs.</div></div>
+<div class="it"><div class="k">02 · Ask</div><div class="t">ask_store</div><div class="d">The store's own agent answers, and says when it doesn't know.</div></div>
+<div class="it"><div class="k">03 · Buy</div><div class="t">buy</div><div class="d">A PayPal order; the person approves it, so nothing is charged without them.</div></div>
+<div class="it"><div class="k">04 · After</div><div class="t">order_status, request_refund</div><div class="d">Tracking from PayPal, and refunds inside the store's policy.</div></div></div></div></section>
+${siteFooter()}`,
     {
+      bare: true,
       description: 'Turn your PayPal business into a store AI agents can ask questions of and buy from.',
       script: `${POST_JS}
-function demo(b){b.disabled=true;b.textContent='Setting up your demo store…';post('/api/auth/sign-in/anonymous',{}).then(function(r){if(!r.ok){b.disabled=false;b.textContent='Try it with a demo store';var e=document.getElementById('err');e.textContent=r.j.message||'Could not start the demo';e.style.display='block';return}location.href='/app'})}`,
+function demo(b){b.disabled=true;var t=b.innerHTML;b.textContent='Setting up your demo store…';post('/api/auth/sign-in/anonymous',{}).then(function(r){if(!r.ok){b.disabled=false;b.innerHTML=t;var e=document.getElementById('err');e.textContent=r.j.message||'Could not start the demo';e.style.display='block';return}location.href='/app'})}`,
     },
   );
 }
 
 const PAYPAL_MARK = `<svg class="gmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#003087" d="M7.3 21.2H3.9a.5.5 0 0 1-.5-.6L6.1 3.4A.8.8 0 0 1 6.9 2.7h6.3c3.3 0 5.4 1.7 4.8 5-.7 3.9-3.3 5.6-7 5.6H9.4a.8.8 0 0 0-.8.7z"/><path fill="#0070E0" d="M18.6 7.6c-.7 3.8-3.3 5.9-6.9 5.9h-1.2a.8.8 0 0 0-.8.7l-1 6.3-.3 1.7a.5.5 0 0 0 .5.6h3a.7.7 0 0 0 .7-.6l.7-4.5a.7.7 0 0 1 .7-.6h.6c3 0 5.2-1.6 5.8-4.8.4-2.1-.2-3.6-1.8-4.7z"/></svg>`;
 
+const PAYPAL_MARK_W = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#fff" d="M7.3 21.2H3.9a.5.5 0 0 1-.5-.6L6.1 3.4A.8.8 0 0 1 6.9 2.7h6.3c3.3 0 5.4 1.7 4.8 5-.7 3.9-3.3 5.6-7 5.6H9.4a.8.8 0 0 0-.8.7z"/><path fill="#fff" fill-opacity=".7" d="M18.6 7.6c-.7 3.8-3.3 5.9-6.9 5.9h-1.2a.8.8 0 0 0-.8.7l-1 6.3-.3 1.7a.5.5 0 0 0 .5.6h3a.7.7 0 0 0 .7-.6l.7-4.5a.7.7 0 0 1 .7-.6h.6c3 0 5.2-1.6 5.8-4.8.4-2.1-.2-3.6-1.8-4.7z"/></svg>`;
+
 export function loginPage(opts: { paypal: boolean; error?: string; next?: string }): string {
   return layout(
     'Sign in · Open Shelf',
-    `<div class="auth"><div class="rise">${LOGO}</div><h1 class="rise" style="--d:.05s">Open your shelf.</h1><p class="sub rise" style="--d:.1s">Sign in with the PayPal account you sell with. Payments from shoppers and their agents go straight into it.</p>
+    `${siteHeader([['/#how', 'How it works'], ['/s/dewdrop', 'Demo store']], '<a class="pb sm" href="/">Try the demo</a>')}<div class="wrap"><div class="auth" style="margin-top:72px"><h1 class="rise" style="--d:.05s">Open your shelf.</h1><p class="sub rise" style="--d:.1s">Sign in with the PayPal account you sell with. Payments from shoppers and their agents go straight into it.</p>
 <div class="card rise" style="--d:.15s;margin:0">${
       opts.paypal
         ? `<button class="btn dark block lg" onclick="social(this)">${PAYPAL_MARK}Log in with PayPal</button><p class="small muted" style="text-align:center;margin:12px 0 0">This demo runs on the PayPal sandbox: use a sandbox account from developer.paypal.com → Testing Tools → Sandbox accounts.</p>`
         : '<p class="empty">PayPal sign-in is not configured on this deployment.</p>'
     }
 <p id="err" class="small" style="color:var(--red);display:${opts.error ? 'block' : 'none'};margin:12px 0 0">${opts.error ? `PayPal sign-in didn't complete (${esc(opts.error.replace(/_/g, ' '))}). Try again.` : ''}</p></div>
-<p class="small muted" style="text-align:center;margin-top:18px">Just looking? <a href="/">Try the demo store</a> without an account.</p></div>`,
+<p class="small muted" style="text-align:center;margin-top:18px">Just looking? <a href="/">Try the demo store</a> without an account.</p></div></div>`,
     {
+      bare: true,
       script: `var NEXT=${js(opts.next ?? '/app')};${POST_JS}
 function err(m){var e=document.getElementById('err');e.textContent=m;e.style.display=m?'block':'none'}
 function social(b){b.disabled=true;post('/api/auth/sign-in/social',{provider:'paypal',callbackURL:NEXT,errorCallbackURL:'/login'}).then(function(r){if(r.j.url)location.href=r.j.url;else{b.disabled=false;err((r.j&&r.j.message)||'PayPal sign-in is not available')}})}`,
@@ -118,15 +153,18 @@ export interface AppChrome {
 }
 
 function appNav(c: AppChrome): string {
-  const link = (k: AppChrome['active'], href: string, label: string) => `<a href="${href}" style="${c.active === k ? 'color:var(--ink)' : ''}">${label}</a>`;
-  return `<nav class="app">${LOGO}<div class="links">${link('overview', '/app', 'Overview')}${link('products', '/app/products', 'Products')}${link('questions', '/app/questions', `Questions${c.unanswered ? ` <span class="chip warn">${c.unanswered}</span>` : ''}`)}${link('orders', '/app/orders', 'Orders')}${link('settings', '/app/settings', 'Settings')}</div>
-<div class="right"><a class="btn sm" href="/s/${esc(c.shop.slug)}" target="_blank">View store ↗</a><a class="btn sm" href="#" onclick="fetch('/api/auth/sign-out',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/'});return false">Sign out</a></div></nav>
-${c.isDemoUser ? `<div class="note small">This is a demo store with its own sandbox PayPal. Buy anything with a PayPal sandbox buyer account; the store page shows test login details.</div>` : ''}
+  const link = (k: AppChrome['active'], href: string, label: string) => `<a href="${href}" class="${c.active === k ? 'on' : ''}">${label}</a>`;
+  return `<header class="hdr"><div class="in">${LOGO}<nav>${link('overview', '/app', 'Overview')}${link('products', '/app/products', 'Products')}${link('questions', '/app/questions', `Questions${c.unanswered ? ` <span class="chip warn">${c.unanswered}</span>` : ''}`)}${link('orders', '/app/orders', 'Orders')}${link('settings', '/app/settings', 'Settings')}</nav>
+<div class="end"><a class="pb sm hide-sm" href="#" onclick="fetch('/api/auth/sign-out',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/'});return false">Sign out</a><a class="pb dark sm" href="/s/${esc(c.shop.slug)}" target="_blank"><span class="dot"></span>View store</a></div></div></header>`;
+}
+
+function appNotes(c: AppChrome): string {
+  return `${c.isDemoUser ? `<div class="note small">This is a demo store with its own sandbox PayPal. Buy anything with test card 4005 5192 0000 0004 or a PayPal sandbox account.</div>` : ''}
 ${!c.canTakePayments ? `<div class="note err small">Open Shelf doesn't know where to send your money yet, so agents can't buy. <a href="/app/settings">Add your PayPal</a></div>` : ''}${flash(c.note, c.error)}`;
 }
 
 function appPage(title: string, c: AppChrome, body: string, script = ''): string {
-  return layout(`${title} · ${c.shop.name}`, `${appNav(c)}${body}`, { script: `${POST_JS}${script}` });
+  return layout(`${title} · ${c.shop.name}`, `${appNav(c)}<div class="wrap"><div style="height:8px"></div>${appNotes(c)}${body}</div>`, { bare: true, script: `${POST_JS}${script}` });
 }
 
 export interface OverviewData {

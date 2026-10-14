@@ -56,31 +56,15 @@ export function productArt(p: Pick<Product, 'name' | 'description' | 'needsShipp
 
 const PP = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#003087" d="M7.3 21.2H3.9a.5.5 0 0 1-.5-.6L6.1 3.4A.8.8 0 0 1 6.9 2.7h6.3c3.3 0 5.4 1.7 4.8 5-.7 3.9-3.3 5.6-7 5.6H9.4a.8.8 0 0 0-.8.7z"/><path fill="#0070E0" d="M18.6 7.6c-.7 3.8-3.3 5.9-6.9 5.9h-1.2a.8.8 0 0 0-.8.7l-1 6.3-.3 1.7a.5.5 0 0 0 .5.6h3a.7.7 0 0 0 .7-.6l.7-4.5a.7.7 0 0 1 .7-.6h.6c3 0 5.2-1.6 5.8-4.8.4-2.1-.2-3.6-1.8-4.7z"/></svg>`;
 
+const PPW = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="#fff" d="M7.3 21.2H3.9a.5.5 0 0 1-.5-.6L6.1 3.4A.8.8 0 0 1 6.9 2.7h6.3c3.3 0 5.4 1.7 4.8 5-.7 3.9-3.3 5.6-7 5.6H9.4a.8.8 0 0 0-.8.7z"/><path fill="#fff" fill-opacity=".7" d="M18.6 7.6c-.7 3.8-3.3 5.9-6.9 5.9h-1.2a.8.8 0 0 0-.8.7l-1 6.3-.3 1.7a.5.5 0 0 0 .5.6h3a.7.7 0 0 0 .7-.6l.7-4.5a.7.7 0 0 1 .7-.6h.6c3 0 5.2-1.6 5.8-4.8.4-2.1-.2-3.6-1.8-4.7z"/></svg>`;
+
 const CSS = `
 body{background:var(--sf-bg)}
-.sf{--sf-bg:#FBFAF8;--ink:#1C1C1C;--ink2:#4A4845;--muted:#85827E;--line:#E9E5E0;--gold:#FFC439;--gold2:#F2B51C}
+.sf{--sf-bg:#FFFFFF;--ink:#1C1C1C;--ink2:#4A4845;--muted:#85827E;--line:#E9E5E0;--gold:#FFC439;--gold2:#F2B51C}
 .sf a{color:inherit}
-.sf-in{max-width:1180px;margin:0 auto;padding:0 24px}
-.sf-top{position:sticky;top:0;z-index:10;background:color-mix(in oklab,var(--sf-bg) 82%,transparent);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
-.sf-top .sf-in{display:flex;align-items:center;gap:14px;height:62px}
+.logo .monog{width:26px;height:26px;border-radius:8px;font-size:13px}
 .monog{width:34px;height:34px;border-radius:11px;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:16px;letter-spacing:-.02em;flex:none}
-.sf-top .nm{font-weight:600;font-size:17px;letter-spacing:-.02em}
-.sf-top nav{margin-left:auto;display:flex;gap:6px;align-items:center}
-.sf-top nav a{font-size:14px;text-decoration:none;padding:8px 12px;border-radius:999px;color:var(--ink2);transition:background .15s}
-.sf-top nav a:hover{background:var(--accent-soft);color:var(--ink)}
 .sf-hero{background:radial-gradient(1200px 420px at 15% -10%,var(--accent-soft),transparent 70%),radial-gradient(900px 380px at 100% 0%,var(--accent-soft2),transparent 65%);padding:44px 0 36px}
-.sf-hero .sf-in{display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}
-@media(max-width:920px){.sf-hero .sf-in{grid-template-columns:1fr;gap:26px}}
-.eyebrow{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);font-weight:500}
-.sf-hero h1{font-size:clamp(40px,6vw,72px);letter-spacing:-.045em;line-height:.98;margin:12px 0 14px;font-weight:600}
-.sf-hero .tag{font-size:clamp(17px,1.6vw,20px);color:var(--ink2);max-width:520px;margin:0;line-height:1.45}
-.badges{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 26px}
-.badge{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:13.5px;color:var(--ink2)}
-.badge i{font-style:normal;width:18px;height:18px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:inline-flex;align-items:center;justify-content:center;font-size:11px}
-.cta{display:flex;gap:10px;flex-wrap:wrap}
-.pill{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 20px;border-radius:999px;font-weight:500;font-size:15px;text-decoration:none;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;transition:transform .35s cubic-bezier(.34,3.85,.64,1),box-shadow .25s,background .15s}
-.pill:hover{transform:translateY(-1px);box-shadow:0 10px 24px -16px rgba(0,0,0,.45);transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s}
-.pill.ink{background:var(--ink);color:#fff;border-color:var(--ink)}
 /* concierge */
 .concierge{background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:0 30px 60px -40px rgba(30,20,10,.35);overflow:hidden;display:flex;flex-direction:column}
 .concierge .hd{display:flex;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
@@ -103,10 +87,6 @@ body{background:var(--sf-bg)}
 .ask button{border:0;background:var(--accent);color:#fff;border-radius:999px;padding:0 18px;font:inherit;font-weight:500;cursor:pointer}
 .ask button:disabled{opacity:.5}
 /* collection */
-.sec{padding:34px 0 10px}.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:18px}
-.sec-h h2{font-size:28px;letter-spacing:-.03em;font-weight:600}.sec-h span{color:var(--muted);font-size:14px}
-.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(262px,1fr));gap:18px}
-.pc{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;scroll-margin-top:84px;transition:box-shadow .3s,transform .3s cubic-bezier(.22,1,.36,1)}
 .pc:hover{box-shadow:0 24px 48px -32px rgba(30,20,10,.45);transform:translateY(-2px)}
 .pc:target{box-shadow:0 0 0 3px var(--accent)}
 .media{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--accent-soft)}
@@ -116,8 +96,6 @@ body{background:var(--sf-bg)}
 .pc:hover .media svg,.pc:hover .media img{transform:scale(1.035)}
 .flag{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:500}
 .flag.low{color:#9A5B00}.flag.out{color:#B3261E}
-.body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:10px;flex:1}
-.body h3{font-size:17.5px;letter-spacing:-.02em;font-weight:600;margin:0;line-height:1.25}
 .price{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .deal{align-self:flex-start;white-space:nowrap;font-size:12.5px;font-weight:500;color:#1E6B3A;background:#E7F5EC;border-radius:999px;padding:3px 10px}
 .pdp{margin-top:14px}.pdp .pc{display:grid;grid-template-columns:1.1fr 1fr}.pdp .media{aspect-ratio:auto;min-height:360px}.pdp .body{padding:28px}.pdp h3{font-size:30px;letter-spacing:-.03em}.pdp .price{font-size:26px}
@@ -130,33 +108,32 @@ body{background:var(--sf-bg)}
 .chips label{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13.5px;cursor:pointer;transition:all .15s;background:#fff}
 .chips input:checked+label{border-color:var(--ink);background:var(--ink);color:#fff}
 .chips input:focus-visible+label{box-shadow:0 0 0 3px var(--accent-soft)}
-.top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
-.buy{margin-top:auto;padding-top:4px}
 .qty{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;height:34px;flex:none}
 .qty button{border:0;background:none;width:30px;height:100%;font-size:18px;cursor:pointer;color:var(--ink2)}
 .qty input{width:28px;border:0;text-align:center;font:inherit;font-size:15px;background:none;-moz-appearance:textfield}
 .qty input::-webkit-outer-spin-button,.qty input::-webkit-inner-spin-button{-webkit-appearance:none}
-.ppbtn{width:100%;height:46px;white-space:nowrap;border:0;border-radius:999px;background:var(--gold);color:#111;font:inherit;font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background .15s,transform .2s}
-.ppbtn:hover{background:var(--gold2)}.ppbtn:active{transform:scale(.98)}.ppbtn:disabled{background:#eee;color:#999;cursor:default}
-.askthis{background:none;border:0;padding:0;font:inherit;font-size:13.5px;color:var(--accent-ink);cursor:pointer;text-align:left}
-.askthis:hover{text-decoration:underline}
 /* agents */
-.agents{margin:40px 0 0;background:#141414;color:#fff;border-radius:26px;padding:34px;display:grid;grid-template-columns:1.1fr .9fr;gap:30px;position:relative;overflow:hidden}
-.agents::after{content:"";position:absolute;right:-120px;top:-120px;width:360px;height:360px;border-radius:50%;background:radial-gradient(var(--accent),transparent 65%);opacity:.35}
-@media(max-width:860px){.agents{grid-template-columns:1fr;padding:24px}}
-.agents h2{font-size:28px;letter-spacing:-.03em;font-weight:600;margin:8px 0 10px}.agents p{color:#c9c6c2;margin:0 0 16px}
-.agents ol{margin:0;padding:0;list-style:none;display:grid;gap:10px;color:#e6e3df;font-size:14.5px}
-.agents ol li{display:flex;gap:10px}.agents ol b{width:22px;height:22px;border-radius:50%;background:#2a2a2a;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
-.endpoint{position:relative;z-index:1;background:#1f1f1f;border:1px solid #2e2e2e;border-radius:18px;padding:18px;align-self:center}
-.endpoint .l{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#9a9692}
-.endpoint code{display:block;background:none;padding:0;margin:10px 0 14px;color:var(--lime,#CDF034);font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
-.endpoint button{border:0;border-radius:999px;padding:9px 16px;background:#fff;font:inherit;font-weight:500;cursor:pointer}
-.endpoint .try{margin-top:14px;font-size:13px;color:#a9a5a0}
-.sandbox{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 16px;font-size:13.5px;color:var(--ink2);margin-top:18px}
 .alert{background:#FDECEA;color:#8C1D18;border-radius:14px;padding:12px 16px;margin:16px 0 0}
-.sf-foot{padding:34px 0 44px;color:var(--muted);font-size:13.5px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-@media(max-width:640px){.sf-in{padding:0 16px}.sf-hero{padding:28px 0 24px}.sf-top nav a.hide-sm{display:none}.agents h2,.sec-h h2{font-size:23px}}
 @media(prefers-reduced-motion:reduce){.b,.pc,.media svg,.media img{animation:none;transition:none}}
+
+.sf-hero{background:radial-gradient(900px 420px at 0% 0%,var(--accent-soft),transparent 70%),radial-gradient(800px 380px at 100% 10%,var(--accent-soft2),transparent 65%)}
+.sf-hero .container.hero2{align-items:start;padding-top:64px;padding-bottom:64px}
+.sec{padding:32px 0 8px}
+.sec-h{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:32px;flex-wrap:wrap}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:24px}
+.pc{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;scroll-margin-top:84px;transition:box-shadow .3s,transform .3s cubic-bezier(.22,1,.36,1)}
+.pc:hover{box-shadow:0 24px 48px -32px rgba(30,20,10,.4);transform:translateY(-2px)}
+.pc:target{box-shadow:0 0 0 3px var(--accent)}
+.body{padding:20px 20px 0;display:flex;flex-direction:column;gap:12px;flex:1}
+.body h3{font-size:17px;letter-spacing:-.01em;font-weight:500;margin:0;line-height:1.3}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
+.buy{margin:auto -20px 0;padding:14px 20px;background:var(--bg2);border-top:1px solid var(--line);display:flex;gap:8px}
+.ppbtn{flex:1;height:42px;border:0;border-radius:999px;background:var(--ink);color:#fff;font:inherit;font-weight:500;font-size:14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;white-space:nowrap;transition:transform .2s,background .15s}
+.ppbtn:hover{background:#000}.ppbtn:active{transform:scale(.98)}.ppbtn:disabled{background:#E7E5E1;color:#9A9792;cursor:default}
+.askthis{height:42px;padding:0 18px;border:1px solid var(--line);border-radius:999px;background:#fff;font:inherit;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer}
+.askthis:hover{border-color:var(--ink2)}
+.concierge{border-radius:16px}
+@media(max-width:640px){.sf-hero .container.hero2{padding-top:36px;padding-bottom:40px}}
 `;
 
 export interface StorefrontView {
@@ -256,8 +233,7 @@ export function storefrontPage(shop: Shop, products: Product[], v: StorefrontVie
 <form class="body" method="post" action="/s/${esc(shop.slug)}/buy" data-base="${p.priceCents}"><input type="hidden" name="product_id" value="${esc(p.id)}">
 <div><h3><a href="/s/${esc(shop.slug)}/p/${esc(p.id)}" style="text-decoration:none">${esc(p.name)}</a></h3><div class="top"><div class="price" data-price-out>${esc(fmt(shown, shop.currency))}</div><span class="qty"><button type="button" aria-label="Fewer" onclick="step(this,-1)">−</button><input name="quantity" type="number" min="1" max="99" value="1" aria-label="Quantity"><button type="button" aria-label="More" onclick="step(this,1)">+</button></span></div></div>
 ${p.market && p.market.minCents > shown ? `<span class="deal">Below retail · ${esc(fmt(p.market.minCents, shop.currency))}+ elsewhere</span>` : ''}<p class="desc">${esc(p.description)}</p>${opts}
-<div class="buy"><button class="ppbtn" ${soldOut || !v.canBuy ? 'disabled' : ''}>${soldOut ? 'Sold out' : `${PP} Buy with PayPal`}</button></div>
-<button type="button" class="askthis" onclick="askAbout(${esc(js(p.id))},${esc(js(p.name))})">Ask the shop about this →</button></form></article>`;
+<div class="buy"><button class="ppbtn" ${soldOut || !v.canBuy ? 'disabled' : ''}>${soldOut ? 'Sold out' : `${PPW} Buy with PayPal`}</button><button type="button" class="askthis" onclick="askAbout(${esc(js(p.id))},${esc(js(p.name))})">Ask</button></div></form></article>`;
   };
 
   const focus = v.focus;
@@ -272,24 +248,38 @@ ${p.market && p.market.minCents > shown ? `<span class="deal">Below retail · ${
   const focusSection = focus
     ? `<section class="sec"><a class="small" href="/s/${esc(shop.slug)}" style="color:var(--muted)">← All of ${esc(shop.name)}</a><div class="pdp">${card(focus).replace('class="desc"', 'class="desc full"')}</div></section>`
     : '';
+  const stats: [string, string][] = [
+    [`${shop.refundDays}-day refunds`, 'Back to your PayPal account, no forms'],
+    ['Secure PayPal checkout', 'You approve every payment in PayPal'],
+    allServices ? ['Booked online', 'Services start after payment'] : ['Shipped to your PayPal address', 'PayPal collects it at checkout'],
+    ['Agent-ready', 'Your AI assistant can ask and buy here'],
+  ];
   const body = `${ld}<div class="sf" style="--accent:hsl(${h} 45% 40%);--accent-ink:hsl(${h} 50% 26%);--accent-soft:hsl(${h} 60% 94%);--accent-soft2:hsl(${(h + 35) % 360} 60% 93%)">
-<header class="sf-top"><div class="sf-in"><span class="monog">${esc(initial)}</span><span class="nm">${esc(shop.name)}</span><nav><a href="#shop" class="hide-sm">Shop</a><a href="#ask">Ask the shop</a><a href="#agents" class="hide-sm">Shop with AI</a></nav></div></header>
-${focus ? `<div class="sf-in">${focusSection}</div>` : ''}<section class="sf-hero"><div class="sf-in">
-<div><div class="eyebrow">Independent shop · ${products.length} ${products.length === 1 ? 'item' : 'items'}</div><h1>${esc(shop.name)}</h1><p class="tag">${esc(shop.tagline || 'Welcome to our shop.')}</p>
-<div class="badges">${badges.map(([i, t]) => `<span class="badge"><i>${i}</i>${esc(t)}</span>`).join('')}</div>
-<div class="cta"><a class="pill ink" href="#shop">Shop the collection</a><a class="pill" href="#ask" onclick="document.getElementById('q').focus()">Ask a question</a></div>
-${v.error ? `<div class="alert">${esc(v.error)}</div>` : ''}
-${v.demo ? `<div class="sandbox">Sandbox demo, nothing real is charged. At PayPal choose <b>Pay with Credit or Debit Card</b> and use test card <b>4005 5192 0000 0004</b> (any future date, CVV 123), or a <a href="https://developer.paypal.com/dashboard/accounts" target="_blank" rel="noopener">sandbox account</a>.</div>` : ''}</div>
+<header class="hdr"><div class="in"><a class="logo" href="/s/${esc(shop.slug)}" style="text-decoration:none"><span class="monog">${esc(initial)}</span>${esc(shop.name)}</a><nav><a href="#shop">Shop</a><a href="#ask">Ask the shop</a><a href="#agents">Shop with AI</a></nav>
+<div class="end"><a class="pb dark sm" href="#ask"><span class="dot"></span>Ask the shop</a></div></div></header>
+${focus ? `<div class="container">${focusSection}</div>` : ''}
+<section class="sf-hero"><div class="container hero2">
+<div><span class="badge-pill"><span class="ck">✓</span>Independent shop · ${products.length} ${products.length === 1 ? 'item' : 'items'} · paid with PayPal</span>
+<h1 class="h1x">${esc(shop.name)}</h1><p class="lead">${esc(shop.tagline || 'Welcome to our shop.')}</p>
+<div class="row" style="margin-top:28px;gap:10px"><a class="pb dark" href="#shop" style="height:46px">Shop the collection</a><a class="pb" href="#ask" style="height:46px" onclick="setTimeout(function(){document.getElementById('q').focus()},300)">Ask a question</a></div>
+${v.demo ? `<p class="cap">Sandbox demo: nothing real is charged. Pay with card <b>4005 5192 0000 0004</b> (any future date, CVV 123) or a <a href="https://developer.paypal.com/dashboard/accounts" target="_blank" rel="noopener">sandbox account</a>.</p>` : '<p class="cap">Secure checkout with PayPal · you approve every payment</p>'}
+${v.error ? `<div class="alert">${esc(v.error)}</div>` : ''}</div>
 <div class="concierge" id="ask"><div class="hd"><span class="monog">${esc(initial)}</span><div><b>Ask ${esc(shop.name)}</b><span>Answers from what the shop has published</span></div><span class="live">online</span></div>
 <div class="msgs" id="chat"><div class="b them">Hi! I know everything ${esc(shop.name)} has published: products, options, policies. What are you looking for?</div></div>
-<div class="sugg" id="sugg">${suggestions.map((s) => `<button type="button" onclick="send(${esc(js(s))})">${esc(s)}</button>`).join('')}</div>
+<div class="sugg" id="sugg">${suggestions.map((sg) => `<button type="button" onclick="send(${esc(js(sg))})">${esc(sg)}</button>`).join('')}</div>
 <form class="ask" onsubmit="ask(event)"><input id="q" placeholder="Ask about a product, sizing, shipping…" autocomplete="off" aria-label="Your question"><button id="askBtn">Ask</button></form></div>
 </div></section>
-<main class="sf-in"><section class="sec" id="shop"><div class="sec-h"><h2>${focus ? `More from ${esc(shop.name)}` : 'The collection'}</h2><span>Paid securely with PayPal</span></div><div class="pgrid">${products.filter((p) => p.id !== focus?.id).map(card).join('') || '<p class="muted">No products yet.</p>'}</div></section>
-<section class="agents" id="agents"><div style="position:relative;z-index:1"><div class="eyebrow" style="color:#b9b6b2">Shop with your AI agent</div><h2>Let your assistant do the shopping.</h2><p>${esc(shop.name)} is open to AI agents. Yours can ask the shop questions, compare options and place the order. You approve every payment in PayPal.</p>
-<ol><li><b>1</b>Add the shop to Claude, ChatGPT or any MCP client.</li><li><b>2</b>Ask it to find what you need here.</li><li><b>3</b>Approve the PayPal link it gives you. Done.</li></ol></div>
-<div class="endpoint"><div class="l">This shop's agent endpoint</div><code id="mcp">${esc(mcp)}</code><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('mcp').textContent);this.textContent='Copied ✓'">Copy link</button><div class="try">In Claude: Settings → Connectors → Add custom connector.</div></div></section>
-<footer class="sf-foot"><span>© ${esc(shop.name)}</span><span>Payments by PayPal · Powered by <a href="/">Open Shelf</a></span></footer></main></div>`;
+<div class="statband"><div class="container">${stats.map(([t, d]) => `<div class="cell"><b>${esc(t)}</b><span>${esc(d)}</span></div>`).join('')}</div></div>
+<section class="section" id="shop"><div class="container"><div class="sec-h"><div><h2 class="h2x">${focus ? `More from ${esc(shop.name)}` : 'The collection'}</h2><p class="sec-lead">Ask the shop anything before you buy. Checkout is PayPal.</p></div><span class="cap" style="margin:0">${products.length} ${products.length === 1 ? 'item' : 'items'}</span></div>
+<div class="pgrid">${products.filter((p) => p.id !== focus?.id).map(card).join('') || '<p class="muted">No products yet.</p>'}</div></div></section>
+<section class="section dark" id="agents"><div class="container"><div class="split"><div><div class="eyeline">Shop with your AI agent</div><h2 class="h2x">Let your assistant do the shopping.</h2></div>
+<div><p class="sec-lead" style="margin:0 0 16px">${esc(shop.name)} is open to AI agents. Add the shop to Claude, ChatGPT or any MCP client:</p><div class="codebox"><span id="mcp">${esc(mcp)}</span><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('mcp').textContent);this.textContent='Copied ✓'">Copy</button></div></div></div>
+<div class="cols"><div class="it"><div class="k">01 · Connect</div><div class="t">Add the shop to your assistant</div><div class="d">In Claude: Settings → Connectors → Add custom connector.</div></div>
+<div class="it"><div class="k">02 · Ask</div><div class="t">It asks the shop for you</div><div class="d">Sizing, ingredients, shipping: the same answers you get here.</div></div>
+<div class="it"><div class="k">03 · Buy</div><div class="t">It places the order</div><div class="d">You get a PayPal link and approve it. Nothing is charged without you.</div></div>
+<div class="it"><div class="k">04 · After</div><div class="t">Tracking and refunds</div><div class="d">Your assistant can check the order and ask for a refund within ${shop.refundDays} days.</div></div></div></div></section>
+<footer class="foot"><div class="container bar" style="padding-top:24px"><span>© ${esc(shop.name)}</span><span>Payments by PayPal · Powered by <a href="/" style="display:inline;margin:0;font-size:13px">Open Shelf</a></span></div></footer>
+<a class="float" href="#ask" onclick="setTimeout(function(){document.getElementById('q').focus()},300)"><span class="av">${esc(initial)}</span><span><b>Ask ${esc(shop.name)}</b><small>Online now · answers in seconds</small></span></a></div>`;
 
   const script = `var SLUG=${js(shop.slug)},CUR=${js(shop.currency)},FOCUS=null;
 function post(p,b){return fetch(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})}
