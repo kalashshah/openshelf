@@ -15,10 +15,10 @@ import {
   productsPage,
   questionsPage,
   settingsPage,
-  storefrontPage,
   type AppChrome,
 } from './pages';
 import { toCents } from './paypal';
+import { storefrontPage } from './storefront';
 import { DEMO_SHOP, ensureShowcase, seedShop } from './seed';
 import { fmt, Store, UserError, type Shop } from './store';
 

@@ -6,13 +6,14 @@ export function esc(s: unknown): string {
 }
 
 /** Safe for a <script> block: JSON that cannot close the tag. */
-function js(v: unknown): string {
+export function js(v: unknown): string {
   return JSON.stringify(v).replace(/</g, '\\u003c');
 }
 
-export function layout(title: string, body: string, opts: { script?: string; description?: string } = {}): string {
+/** bare = the page lays itself out (the full-width store page); css = extra styles after the app's. */
+export function layout(title: string, body: string, opts: { script?: string; description?: string; bare?: boolean; css?: string } = {}): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
-${opts.description ? `<meta name="description" content="${esc(opts.description)}">` : ''}<link rel="preconnect" href="https://api.fontshare.com"><link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"><style>${CSS}</style></head><body><div class="wrap">${body}</div>${opts.script ? `<script>${opts.script}</script>` : ''}</body></html>`;
+${opts.description ? `<meta name="description" content="${esc(opts.description)}">` : ''}<link rel="preconnect" href="https://api.fontshare.com"><link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet"><style>${CSS}${opts.css ?? ''}</style></head><body>${opts.bare ? body : `<div class="wrap">${body}</div>`}${opts.script ? `<script>${opts.script}</script>` : ''}</body></html>`;
 }
 
 const LOGO = `<a class="logo" href="/"><span class="mk">◫</span>Open Shelf</a>`;
@@ -313,47 +314,6 @@ export function parseVariantText(text: string): Variant[] {
 }
 
 // ---- the public store page ----------------------------------------------------------------
-
-export function storefrontPage(shop: Shop, products: Product[], v: { publicUrl: string; canBuy: boolean; demo: boolean; error?: string }): string {
-  const cards = products
-    .map((p) => {
-      const opts = p.variants
-        .map(
-          (vr) =>
-            `<select class="f sm" name="opt:${esc(vr.name)}" aria-label="${esc(vr.name)}">${vr.options.map((o) => `<option value="${esc(o.label)}">${esc(vr.name)}: ${esc(o.label)}${o.price_cents !== undefined ? ` · ${esc(fmt(o.price_cents, shop.currency))}` : ''}</option>`).join('')}</select>`,
-        )
-        .join('');
-      const soldOut = p.stock === 0;
-      return `<article class="prod" id="${esc(p.id)}"><div class="img"${tint(p)}>${thumb(p)}</div><div class="body"><div class="row" style="justify-content:space-between;align-items:baseline"><h3>${esc(p.name)}</h3><span class="price">${esc(fmt(p.priceCents, shop.currency))}</span></div>
-<p class="desc">${esc(p.description)}</p>${p.stock !== null && p.stock > 0 && p.stock <= 10 ? `<span class="small" style="color:var(--amber)">Only ${p.stock} left</span>` : ''}
-<form method="post" action="/s/${esc(shop.slug)}/buy"><input type="hidden" name="product_id" value="${esc(p.id)}">${opts}
-<div class="row" style="gap:6px"><input class="f sm" name="quantity" type="number" min="1" max="99" value="1" style="width:70px" aria-label="Quantity"><button class="btn dark sm" style="flex:1" ${soldOut || !v.canBuy ? 'disabled' : ''}>${soldOut ? 'Sold out' : 'Buy with PayPal'}</button></div>
-<button type="button" class="btn sm" onclick="askAbout(${esc(js(p.id))},${esc(js(p.name))})">Ask about this</button></form></div></article>`;
-    })
-    .join('');
-  return layout(
-    `${shop.name}`,
-    `<nav class="app"><span class="logo"><span class="mk">${esc(shop.name.charAt(0))}</span>${esc(shop.name)}</span><div class="right"><span class="small muted">on <a href="/">Open Shelf</a></span></div></nav>
-${flash(undefined, v.error)}
-<div class="head rise"><div><h1>${esc(shop.name)}</h1><p class="sub">${esc(shop.tagline)}</p></div></div>
-${v.demo ? `<div class="note small">Demo store on the PayPal sandbox: nothing real is charged. At checkout, use a <a href="https://developer.paypal.com/dashboard/accounts" target="_blank">sandbox personal account</a>, or choose "Pay with debit or credit card" and use a <a href="https://developer.paypal.com/tools/sandbox/card-testing/" target="_blank">test card</a>.</div>` : ''}
-<div class="card"><div class="cardhead"><h2>Ask the store</h2><span class="small muted">Answers come from what ${esc(shop.name)} has published. AI agents get the same answers.</span></div>
-<div class="chat" id="chat"></div><form class="row" onsubmit="ask(event)"><input class="f" id="q" placeholder="e.g. Which moisturizer is best for oily skin? Does it have fragrance?" style="flex:1;min-width:220px" autocomplete="off"><button class="btn dark" id="askBtn">Ask</button></form></div>
-<div class="grid">${cards || '<p class="empty">No products yet.</p>'}</div>
-<div class="agentbox"><div class="mono">Shopping with an AI agent?</div><p style="margin:6px 0 10px">Add this store to Claude, ChatGPT or any MCP client. Your agent can ask the store questions and buy for you, and you approve every payment in PayPal.</p><code>${esc(v.publicUrl)}/s/${esc(shop.slug)}/mcp</code></div>`,
-    {
-      description: shop.tagline,
-      script: `var SLUG=${js(shop.slug)},FOCUS=null;${POST_JS}
-function bubble(cls,html){var c=document.getElementById('chat');var d=document.createElement('div');d.className='bubble '+cls;d.innerHTML=html;c.appendChild(d);c.scrollTop=c.scrollHeight;return d}
-function e(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function askAbout(id,name){FOCUS=id;var q=document.getElementById('q');q.placeholder='Ask about '+name+'…';q.focus();window.scrollTo({top:0,behavior:'smooth'})}
-function ask(ev){ev.preventDefault();var q=document.getElementById('q');var text=q.value.trim();if(!text)return;q.value='';bubble('me',e(text));var wait=bubble('them','…');var b=document.getElementById('askBtn');b.disabled=true;
-post('/s/'+SLUG+'/ask',{question:text,product_id:FOCUS}).then(function(r){b.disabled=false;if(!r.ok){wait.textContent=r.j.error||'Something went wrong';return}
-var h=e(r.j.answer);if(r.j.recommended&&r.j.recommended.length){h+='<div class="recs">'+r.j.recommended.map(function(p){return '<a class="chip" href="#'+e(p.product_id)+'">'+e(p.name)+' · '+e(p.price)+'</a>'}).join('')+'</div>'}
-if(!r.j.answered)h+='<div class="small muted" style="margin-top:6px">Passed to the shop owner.</div>';wait.innerHTML=h}).catch(function(){b.disabled=false;wait.textContent='Could not reach the store'})}`,
-    },
-  );
-}
 
 export function checkoutResultPage(shop: Shop | null, o: Order | null, kind: 'paid' | 'pending' | 'cancelled'): string {
   const title = kind === 'paid' ? 'Thank you, you are all set.' : kind === 'pending' ? 'Almost there.' : 'Checkout cancelled.';

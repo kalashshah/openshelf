@@ -3,6 +3,7 @@ import { pageDigest } from '../src/agent';
 import { parseVariantText, variantText } from '../src/pages';
 import { orderTotalCents, toOrder, toPayLink } from '../src/paypal';
 import { priceFor, rank, refundPolicy, UserError } from '../src/store';
+import { kindOf } from '../src/storefront';
 
 const moisturizer = {
   name: 'Gel Moisturizer',
@@ -102,4 +103,10 @@ it('pageDigest keeps structured data and absolute image URLs, drops scripts', ()
   expect(d).toContain('"@type":"Product"');
   expect(d).toContain('https://shop.example/a.jpg Soap bar');
   expect(d).not.toContain('evil');
+});
+
+it('kindOf picks a packshot that fits the product', () => {
+  const k = (name: string, needsShipping = true) => kindOf({ name, description: '', needsShipping });
+  expect([k('Oily Skin Starter Set'), k('Barrier Repair Cream'), k('Daily Mineral Sunscreen SPF 40'), k('Clarifying Gel Cleanser'), k('Founder Notebook (A5, dotted)')]).toEqual(['box', 'jar', 'tube', 'bottle', 'book']);
+  expect([k('1-hour product design review'), k('Website maintenance', false)]).toEqual(['ticket', 'ticket']);
 });
