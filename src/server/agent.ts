@@ -141,8 +141,32 @@ export async function productsFromUrl(env: Env, url: string): Promise<{ products
   }
   const page = await fetch(u.toString(), { headers: { 'user-agent': UA, accept: 'text/html' }, redirect: 'follow' });
   if (!page.ok) throw new Error(`That page answered ${page.status}`);
-  const html = (await page.text()).slice(0, 1_500_000);
+  const html = await readCapped(page, 1_500_000);
   return { products: await extractProducts(env, pageDigest(html, page.url)), via: 'ai' };
+}
+
+/** A response body up to `max` bytes; stops reading there instead of buffering a huge page. */
+async function readCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (size < max) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.length;
+  }
+  await reader.cancel().catch(() => {});
+  const buf = new Uint8Array(Math.min(size, max));
+  let at = 0;
+  for (const c of chunks) {
+    const take = Math.min(c.length, buf.length - at);
+    buf.set(c.subarray(0, take), at);
+    at += take;
+    if (at >= buf.length) break;
+  }
+  return new TextDecoder().decode(buf);
 }
 
 const UA = 'Mozilla/5.0 (compatible; OpenShelfImporter/1.0; +https://github.com/kalashshah)';

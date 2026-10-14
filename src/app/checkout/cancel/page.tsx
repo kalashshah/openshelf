@@ -6,9 +6,12 @@ import { Store } from '@/server/store';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CheckoutCancel({ searchParams }: { searchParams: Promise<{ o?: string }> }) {
+export default async function CheckoutCancel({ searchParams }: { searchParams: Promise<{ o?: string; token?: string }> }) {
+  const { o, token } = await searchParams;
   const store = new Store(getEnv());
-  const order = await store.order((await searchParams).o ?? '');
+  const found = await store.orderById(o ?? '');
+  // PayPal sends the buyer back with the order's own token; without it this is just someone with an order id.
+  const order = found && token && token === found.paypalOrderId ? found : null;
   if (order) await store.markCancelled(order.id);
   const shop = order ? await store.shopById(order.shopId) : null;
   return (

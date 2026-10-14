@@ -27,6 +27,8 @@ export const requireShop = cache(async (): Promise<{ env: Env; store: Store; use
       if (user.isAnonymous) {
         shop = await store.createShop(user.id, DEMO_SHOP.name, { demo: true, tagline: DEMO_SHOP.tagline, about: DEMO_SHOP.about });
         await seedShop(store, shop);
+        // Each demo is a fresh shop; clear out ones from earlier visits (older than 3 days).
+        await store.cleanupDemoShops(3 * 86_400_000).catch((e) => console.error('demo_cleanup_failed', String(e)));
       } else {
         shop = await store.createShop(user.id, user.name?.trim() ? `${user.name.trim()}'s shop` : `${user.email.split('@')[0]}'s shop`);
       }

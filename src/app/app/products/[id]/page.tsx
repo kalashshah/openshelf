@@ -47,10 +47,10 @@ export default async function ProductEdit({ params, searchParams }: { params: Pr
           <SectionCard icon={<Package />} title="Product" description="The store agent quotes the description, so say who it suits, sizes, materials or ingredients." footer={<Submit pending="Saving…">Save product</Submit>}>
             <div className="grid gap-5 pt-2">
               <FieldRow label="Name" htmlFor="name">
-                <Input id="name" name="name" required defaultValue={p?.name} />
+                <Input id="name" name="name" required maxLength={127} defaultValue={p?.name} />
               </FieldRow>
               <FieldRow label={`Price (${shop.currency})`} htmlFor="price" hint="Options with their own price override it.">
-                <Input id="price" name="price" required inputMode="decimal" defaultValue={p ? (p.priceCents / 100).toFixed(2) : ''} />
+                <Input id="price" name="price" required inputMode="decimal" pattern="\$?[0-9]+([.][0-9]{1,2})?" title="A number like 24 or 24.50" defaultValue={p ? (p.priceCents / 100).toFixed(2) : ''} />
               </FieldRow>
               <FieldRow label="Description" htmlFor="description" wide>
                 <Textarea id="description" name="description" rows={5} defaultValue={p?.description} />
@@ -59,7 +59,7 @@ export default async function ProductEdit({ params, searchParams }: { params: Pr
                 <Input id="image_url" name="image_url" type="url" defaultValue={p?.imageUrl ?? ''} />
               </FieldRow>
               <FieldRow label="Stock" htmlFor="stock" hint="Blank means not tracked.">
-                <Input id="stock" name="stock" inputMode="numeric" defaultValue={p?.stock ?? ''} />
+                <Input id="stock" name="stock" type="number" min={0} step={1} defaultValue={p?.stock ?? ''} />
               </FieldRow>
               <FieldRow label="Options" htmlFor="variants" hint={'One per line: “Name: choice | choice=price”.'}>
                 <Textarea id="variants" name="variants" rows={3} className="font-mono text-paragraph-sm" placeholder={'Size: 50 ml=24.00 | 100 ml=38.00\nScent: Unscented | Lavender'} defaultValue={p ? variantText(p.variants) : ''} />

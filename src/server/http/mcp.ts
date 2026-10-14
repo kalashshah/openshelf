@@ -13,7 +13,7 @@ export async function serveMcp(env: Env, request: Request, scope: Shop | null): 
     { name: scope ? `openshelf-${scope.slug}` : 'openshelf', version: '0.2.0' },
     { instructions: scope ? `${INSTRUCTIONS}\nThis endpoint is ${scope.name}'s store only.` : INSTRUCTIONS },
   );
-  registerTools(server, env, scope);
+  registerTools(server, env, scope, (what) => overLimit(env, request, what));
   // Stateless: a Worker request may land on any isolate, so no session ids.
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);

@@ -6,10 +6,10 @@ import { extractProducts, productsFromUrl, type DraftProduct } from '@/server/ag
 import { connectSession, createMerchant, DISTRIBUTION, domainOf, getProduct, marketOf } from '@/server/channel3';
 import type { Env } from '@/server/env';
 import { overLimit } from '@/server/http/mcp';
-import { toCents } from '@/server/paypal';
 import { requireShop } from '@/server/session';
 import type { Store } from '@/server/store';
 import { parseVariantText } from '@/server/variants';
+import { checkProduct, CURRENCIES } from '@/server/validate';
 
 /** Back to a page with a note or an error for its flash banner. */
 function back(path: string, note?: string, error?: string): never {
@@ -18,7 +18,13 @@ function back(path: string, note?: string, error?: string): never {
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const NEEDS_APP = 'Importing reads your own PayPal data, which needs your PayPal app connected (Settings → Connect a PayPal app). Payments already go to your PayPal without it.';
+const NEEDS_APP = 'This reads and writes your own PayPal data, so it needs your PayPal app connected (Settings → Connect a PayPal app). Payments already reach your PayPal without it.';
+const DEMO_NO_PAYPAL = 'Demo stores don’t have a PayPal account of their own to import from. Log in with PayPal and connect your PayPal app to use this.';
+/** Why imports and link publishing are unavailable for this shop. */
+function noOwnPayPal(store: Store, shop: Parameters<Store['paymentMode']>[0]): string {
+  const mode = store.paymentMode(shop);
+  return mode === 'demo' ? DEMO_NO_PAYPAL : mode === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.';
+}
 
 // ---- products --------------------------------------------------------------------------
 
@@ -26,15 +32,13 @@ export async function saveProductAction(id: string, f: FormData) {
   const { store, shop } = await requireShop();
   const prev = id === 'new' ? null : await store.product(id);
   if (id !== 'new' && (!prev || prev.shopId !== shop.id)) back('/app/products', undefined, 'No such product');
-  const stockText = String(f.get('stock') ?? '').trim();
+  const checked = checkProduct({ name: String(f.get('name') ?? ''), price: String(f.get('price') ?? ''), imageUrl: String(f.get('image_url') ?? ''), stock: String(f.get('stock') ?? '') });
+  if ('error' in checked) back(`/app/products/${id}`, undefined, checked.error);
   const saved = await store.saveProduct(shop.id, {
     ...(prev ?? {}),
     id: prev?.id,
-    name: String(f.get('name') ?? ''),
-    priceCents: toCents(String(f.get('price') ?? '0')),
+    ...checked.value,
     description: String(f.get('description') ?? ''),
-    imageUrl: String(f.get('image_url') ?? '').trim() || null,
-    stock: stockText === '' ? null : Math.max(0, Number.parseInt(stockText, 10) || 0),
     variants: parseVariantText(String(f.get('variants') ?? '')),
     active: f.get('active') === 'on',
     needsShipping: f.get('ships') === 'on',
@@ -51,7 +55,7 @@ export async function deleteProductAction(id: string) {
 export async function importPayLinksAction() {
   const { store, shop } = await requireShop();
   const pp = await store.ownPayPalFor(shop);
-  if (!pp) back('/app/products', undefined, store.paymentMode(shop) === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.');
+  if (!pp) back('/app/products', undefined, noOwnPayPal(store, shop));
   let note = '';
   let error = '';
   try {
@@ -99,7 +103,7 @@ export async function importInvoicesAction() {
   const { env, store, shop } = await requireShop();
   if (await limited(env)) back('/app/products', undefined, 'Too many imports at once; try again in a minute.');
   const pp = await store.ownPayPalFor(shop);
-  if (!pp) back('/app/products', undefined, store.paymentMode(shop) === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.');
+  if (!pp) back('/app/products', undefined, noOwnPayPal(store, shop));
   let note = '';
   let error = '';
   try {
@@ -128,7 +132,7 @@ export async function importTextAction(f: FormData) {
 export async function publishLinksAction() {
   const { env, store, shop } = await requireShop();
   const pp = await store.ownPayPalFor(shop);
-  if (!pp) back('/app/products', undefined, store.paymentMode(shop) === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.');
+  if (!pp) back('/app/products', undefined, noOwnPayPal(store, shop));
   const todo = (await store.products(shop.id)).filter((p) => !p.paypalLinkId).slice(0, 20);
   let made = 0;
   let error = '';
@@ -201,7 +205,7 @@ export async function saveSettingsAction(f: FormData) {
     tagline: String(f.get('tagline') ?? '').trim(),
     about: String(f.get('about') ?? '').trim(),
     refundDays: Number.parseInt(String(f.get('refund_days') ?? '30'), 10) || 0,
-    currency: String(f.get('currency') ?? 'USD'),
+    currency: (CURRENCIES as readonly string[]).includes(String(f.get('currency'))) ? String(f.get('currency')) : shop.currency,
     // The public directory is for real merchants; demo shops stay unlisted.
     listed: f.get('listed') === 'on' && !user.isAnonymous,
   });

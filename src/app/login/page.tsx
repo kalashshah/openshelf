@@ -65,7 +65,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
             <WelcomeTile />
           </div>
           <div className="flex justify-center lg:justify-start">
-            <LoginForm paypalEnabled={paypalLoginEnabled(getEnv())} error={error} next={next?.startsWith('/') ? next : '/app'} />
+            <LoginForm paypalEnabled={paypalLoginEnabled(getEnv())} error={error} next={next?.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/app'} />
           </div>
         </main>
       </div>

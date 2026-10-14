@@ -15,7 +15,7 @@ import { variantText } from '@/server/variants';
 import { importInvoicesAction, importPayLinksAction, importTextAction, importUrlAction, publishLinksAction } from '../actions';
 
 export default async function Products({ searchParams }: { searchParams: Promise<{ n?: string; e?: string }> }) {
-  const { store, shop, user, canTakePayments } = await dashboard();
+  const { store, shop, user, canTakePayments, mode } = await dashboard();
   const { n, e } = await searchParams;
   const products = await store.products(shop.id, { includeInactive: true });
   const initial = shop.name.trim().charAt(0).toUpperCase();
@@ -26,7 +26,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
         description="Everything your store agent knows and sells. Bring in what you already have, then tidy it up."
         actions={
           <>
-            {products.some((p) => !p.paypalLinkId) && (
+            {mode === 'app' && products.some((p) => !p.paypalLinkId) && (
               <form action={publishLinksAction} className="hidden sm:block">
                 <Submit variant="basic" pending="Creating links…">
                   <Link2 className="size-4" /> Create PayPal links

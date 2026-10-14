@@ -15,9 +15,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ hoo
   const shop = order ? await store.shopById(order.shopId) : null;
   // Not ours (Penny or another app on the same PayPal app): acknowledge so PayPal stops retrying.
   if (!order || !shop) return Response.json({ ok: true, ignored: true });
-  // Verify with the webhook id of the URL PayPal called: an app connected to both carries two webhooks.
-  const pp = (await params).hook === 'demo' ? store.demoPayPal() : await store.paypalFor(shop);
-  if (env.WEBHOOK_VERIFY !== 'off' && !(pp && (await pp.verifyWebhook(request.headers, raw)))) return Response.json({ error: 'bad signature' }, { status: 401 });
+  // Verify with the webhook id of the URL PayPal called first: one PayPal app can carry both webhooks
+  // (the demo/platform app is also a merchant's), so an event may arrive at either URL.
+  const hook = (await params).hook;
+  const candidates = hook === 'demo' ? [store.demoPayPal(), await store.paypalFor(shop)] : [await store.paypalFor(shop), store.demoPayPal()];
+  let verified = env.WEBHOOK_VERIFY === 'off';
+  for (const pp of candidates) if (!verified && pp) verified = await pp.verifyWebhook(request.headers, raw);
+  if (!verified) return Response.json({ error: 'bad signature' }, { status: 401 });
   if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') await store.markRefunded(order.id, null);
   else await store.sync(shop, order);
   return Response.json({ ok: true });

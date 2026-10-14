@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import * as StatusBadge from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { dashboard } from '@/server/page-context';
+import { CURRENCIES } from '@/server/validate';
 import { connectPayPalAction, savePayeeAction, saveSettingsAction } from '../actions';
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ n?: string; e?: string }> }) {
@@ -33,11 +34,11 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <FieldRow label="About your store" htmlFor="about" hint="Policies, shipping, materials, who your products suit." wide>
                 <Textarea id="about" name="about" rows={7} defaultValue={shop.about} />
               </FieldRow>
-              <FieldRow label="Refund window" htmlFor="refund_days" hint="Days. Automatic for shoppers’ agents inside it.">
-                <Input id="refund_days" name="refund_days" inputMode="numeric" defaultValue={shop.refundDays} />
+              <FieldRow label="Refund window" htmlFor="refund_days" hint="Days, 0 to 365. Automatic for shoppers’ agents inside it.">
+                <Input id="refund_days" name="refund_days" type="number" min={0} max={365} defaultValue={shop.refundDays} />
               </FieldRow>
               <FieldRow label="Currency" htmlFor="currency">
-                <Input id="currency" name="currency" maxLength={3} defaultValue={shop.currency} />
+                <NativeSelect name="currency" id="currency" defaultValue={shop.currency} options={CURRENCIES.map((c) => [c, c])} />
               </FieldRow>
               <FieldRow label="List publicly" hint={user.isAnonymous ? 'Demo stores stay private.' : 'The Open Shelf directory, the sitemap and Channel3 (manage it on Overview).'}>
                 <FormSwitch name="listed" defaultChecked={shop.listed} disabled={user.isAnonymous} />

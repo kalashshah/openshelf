@@ -321,9 +321,12 @@ export class Store {
     return mode === 'demo' ? this.demoPayPal() : null;
   }
 
-  /** The PayPal account whose own data (payment links, invoices) can be read: never the platform app on a payee shop's behalf. */
+  /**
+   * The PayPal account whose own data (payment links, invoices) can be read or written: only an app the merchant
+   * connected themselves. Never the shared platform app, which demo and payee shops check out through.
+   */
   async ownPayPalFor(shop: Shop): Promise<PayPal | null> {
-    return this.paymentMode(shop) === 'payee' ? null : this.paypalFor(shop);
+    return this.paymentMode(shop) === 'app' ? this.paypalFor(shop) : null;
   }
 
   async setChannel3(shop: Shop, patch: { website?: string | null; customerId?: string | null; listed?: boolean }): Promise<void> {
@@ -331,6 +334,28 @@ export class Store {
       .prepare('UPDATE shops SET website = ?, channel3_customer_id = ?, listed = ? WHERE id = ?')
       .bind(patch.website === undefined ? shop.website : patch.website, patch.customerId === undefined ? shop.channel3CustomerId : patch.customerId, (patch.listed ?? shop.listed) ? 1 : 0, shop.id)
       .run();
+  }
+
+  /**
+   * "Try the demo" makes a throwaway account and shop each time. Remove demo shops (and their anonymous owners)
+   * older than `maxAgeMs`, a batch at a time. ponytail: runs when a new demo shop is made, not on a schedule.
+   */
+  async cleanupDemoShops(maxAgeMs: number, batch = 25): Promise<number> {
+    const old = await all<{ id: string; owner_user_id: string }>(
+      this.db.prepare("SELECT id, owner_user_id FROM shops WHERE demo = 1 AND owner_user_id != 'system:showcase' AND created_at < ? LIMIT ?").bind(Date.now() - maxAgeMs, batch),
+    );
+    if (!old.length) return 0;
+    const shops = old.map((r) => r.id);
+    const owners = old.map((r) => r.owner_user_id);
+    const marks = (n: number) => Array(n).fill('?').join(',');
+    await this.db.batch([
+      ...['products', 'questions', 'orders'].map((t) => this.db.prepare(`DELETE FROM ${t} WHERE shop_id IN (${marks(shops.length)})`).bind(...shops)),
+      this.db.prepare(`DELETE FROM shops WHERE id IN (${marks(shops.length)})`).bind(...shops),
+      this.db.prepare(`DELETE FROM session WHERE userId IN (${marks(owners.length)})`).bind(...owners),
+      this.db.prepare(`DELETE FROM account WHERE userId IN (${marks(owners.length)})`).bind(...owners),
+      this.db.prepare(`DELETE FROM user WHERE isAnonymous = 1 AND id IN (${marks(owners.length)})`).bind(...owners),
+    ]);
+    return shops.length;
   }
 
   async kvGet(key: string): Promise<string | null> {
@@ -450,6 +475,12 @@ export class Store {
 
   // ---- orders ------------------------------------------------------------------------
 
+  /** By Open Shelf's own order id only: what shoppers' agents may look up (a PayPal order id appears in return URLs). */
+  async orderById(id: string): Promise<Order | null> {
+    const r = await this.db.prepare('SELECT * FROM orders WHERE id = ?').bind(id).first<Row>();
+    return r ? orderFrom(r) : null;
+  }
+
   async order(id: string): Promise<Order | null> {
     const r = await this.db.prepare('SELECT * FROM orders WHERE id = ? OR paypal_order_id = ?').bind(id, id).first<Row>();
     return r ? orderFrom(r) : null;
@@ -468,7 +499,8 @@ export class Store {
     for (const line of cart.slice(0, 20)) {
       const p = await this.product(line.productId);
       if (!p || p.shopId !== shop.id || !p.active) throw new UserError(`Product ${line.productId} is not sold by ${shop.name}.`);
-      const qty = Math.max(1, Math.min(99, Math.floor(line.quantity ?? 1)));
+      const asked = Number(line.quantity ?? 1);
+      const qty = Number.isFinite(asked) ? Math.max(1, Math.min(99, Math.floor(asked))) : 1;
       if (p.stock !== null && p.stock < qty) throw new UserError(p.stock === 0 ? `${p.name} is sold out.` : `Only ${p.stock} of ${p.name} left.`);
       const priced = priceFor(p, line.options ?? {});
       items.push({ product_id: p.id, name: p.name, variant: priced.label, quantity: qty, unit_cents: priced.unitCents, ships: p.needsShipping });

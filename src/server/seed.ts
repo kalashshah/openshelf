@@ -46,7 +46,15 @@ export async function ensureShowcase(env: Env): Promise<Shop> {
   const store = new Store(env);
   const found = await store.shopBySlug('dewdrop');
   if (found) return found;
-  const shop = await store.createShop('system:showcase', 'Dewdrop', { demo: true, listed: true, tagline: DEMO_SHOP.tagline, about: DEMO_SHOP.about });
+  let shop: Shop;
+  try {
+    shop = await store.createShop('system:showcase', 'Dewdrop', { demo: true, listed: true, tagline: DEMO_SHOP.tagline, about: DEMO_SHOP.about });
+  } catch (e) {
+    // Two first requests at once: the other one made it (owner_user_id is unique).
+    const made = await store.shopForUser('system:showcase');
+    if (made) return made;
+    throw e;
+  }
   await store.updateShop(shop, { name: DEMO_SHOP.name });
   await seedShop(store, shop);
   return (await store.shopById(shop.id)) as Shop;

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { pageDigest } from '../src/server/agent';
 import { parseVariantText, variantText } from '../src/server/variants';
 import { orderTotalCents, toOrder, toPayLink } from '../src/server/paypal';
-import { priceFor, rank, refundPolicy, UserError } from '../src/server/store';
+import { priceFor, rank, refundPolicy, Store, UserError } from '../src/server/store';
+import { checkProduct } from '../src/server/validate';
 import { kindOf, productJsonLd } from '../src/server/catalog-view';
 import { domainOf, mainImage, marketOf } from '../src/server/channel3';
 
@@ -144,5 +145,33 @@ describe('Channel3 listing', () => {
     expect(ld.offers).toMatchObject({ '@type': 'AggregateOffer', lowPrice: '24.00', highPrice: '38.00', url: 'https://x.dev/s/dew/p/p1', availability: 'https://schema.org/InStock' });
     expect(ld.image).toEqual(['https://x.dev/s/dew/p/p1/image.svg']);
     expect(ld.hasMerchantReturnPolicy.merchantReturnDays).toBe(30);
+  });
+});
+
+describe('whose PayPal a shop may read and write', () => {
+  const env = { DEMO_PAYPAL_CLIENT_ID: 'platform-id', DEMO_PAYPAL_CLIENT_SECRET: 'platform-secret', MASTER_KEY: '' } as unknown as ConstructorParameters<typeof Store>[0];
+  const base = { paypalClientId: null, paypalSecretCt: null, paypalSecretIv: null, paypalPayeeEmail: null, demo: false } as unknown as Parameters<Store['paymentMode']>[0];
+  it('never hands the shared platform app to a demo or email-payout shop for imports or publishing', async () => {
+    const store = new Store(env);
+    const demo = { ...base, demo: true };
+    const payee = { ...base, paypalPayeeEmail: 'me@shop.com' };
+    expect([store.paymentMode(demo), store.paymentMode(payee)]).toEqual(['demo', 'payee']);
+    expect(await store.ownPayPalFor(demo)).toBeNull();
+    expect(await store.ownPayPalFor(payee)).toBeNull();
+    // ...while both can still take orders through it.
+    expect(await store.paypalFor(demo)).not.toBeNull();
+    expect(await store.paypalFor(payee)).not.toBeNull();
+  });
+});
+
+describe('product form', () => {
+  const ok = { name: 'Soap', price: '8.50', imageUrl: '', stock: '' };
+  it('accepts a normal product and parses it', () => {
+    expect(checkProduct({ ...ok, stock: '12', imageUrl: 'https://x.dev/a.png' })).toEqual({ value: { name: 'Soap', priceCents: 850, imageUrl: 'https://x.dev/a.png', stock: 12 } });
+  });
+  it('rejects what used to save silently: a word for a price, zero, negative stock, a non-web image', () => {
+    for (const bad of [{ price: 'abc' }, { price: '0' }, { stock: '-5' }, { stock: '2.5' }, { imageUrl: 'javascript:alert(1)' }, { name: '  ' }]) {
+      expect(checkProduct({ ...ok, ...bad })).toHaveProperty('error');
+    }
   });
 });

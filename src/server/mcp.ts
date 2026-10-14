@@ -14,8 +14,9 @@ async function guard(fn: () => Promise<unknown>): Promise<ToolResult> {
   try {
     return reply(await fn());
   } catch (e) {
-    const message = e instanceof UserError ? e.message : `Something went wrong: ${e instanceof Error ? e.message : String(e)}`;
-    if (!(e instanceof UserError)) console.error('tool_failed', message);
+    // Only messages written for the caller go out; anything else is logged and stays here.
+    const message = e instanceof UserError ? e.message : 'Something went wrong on the store’s side. Try again in a moment.';
+    if (!(e instanceof UserError)) console.error('tool_failed', e instanceof Error ? e.message : String(e));
     return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
   }
 }
@@ -27,7 +28,8 @@ export const INSTRUCTIONS = `Open Shelf lets you shop independent stores on a pe
 4. After they approve, call order_status to confirm payment and later to get tracking. request_refund applies the store's refund policy.`;
 
 /** scope = one shop (its own /s/:slug/mcp) or null for the directory of every listed shop. */
-export function registerTools(server: McpServer, env: Env, scope: Shop | null): void {
+/** `limited(what)` = true when this caller is over its budget for a model call or an order. */
+export function registerTools(server: McpServer, env: Env, scope: Shop | null, limited: (what: 'ask' | 'buy') => Promise<boolean> = async () => false): void {
   const store = new Store(env);
   const shops = async (): Promise<Shop[]> => (scope ? [scope] : store.listedShops());
   const shopFor = async (slug?: string): Promise<Shop> => {
@@ -43,7 +45,7 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null): 
     return { shop, product };
   };
   const orderFor = async (id: string): Promise<{ shop: Shop; order: Order }> => {
-    const order = await store.order(id);
+    const order = await store.orderById(id);
     const shop = order ? await store.shopById(order.shopId) : null;
     if (!order || !shop || (scope && shop.id !== scope.id)) throw new UserError(`No order ${id}.`);
     return { shop, order };
@@ -111,6 +113,7 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null): 
     },
     (args) =>
       guard(async () => {
+        if (await limited('ask')) throw new UserError('Too many questions from you just now. Try again in a minute.');
         const a = args as { store?: string; question: string; product_id?: string };
         const shop = a.product_id && !a.store && !scope ? (await productIn(a.product_id)).shop : await shopFor(a.store);
         const [products, knowledge] = await Promise.all([store.products(shop.id), store.knowledge(shop.id)]);
@@ -147,6 +150,7 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null): 
     },
     (args) =>
       guard(async () => {
+        if (await limited('buy')) throw new UserError('Too many orders from you just now. Try again in a minute.');
         const first = await productIn(args.items[0].product_id);
         const order = await store.checkout(
           first.shop,
@@ -225,7 +229,8 @@ export function describeOrder(o: Order) {
     total: fmt(o.totalCents, o.currency),
     items: o.items.map((i) => `${i.quantity} × ${i.name}${i.variant ? ` (${i.variant})` : ''}`),
     ...(o.status === 'created' ? { approve_url: o.approveUrl } : {}),
-    ...(o.shipTo ? { ship_to: o.shipTo } : {}),
+    // Country only: the order id is all a caller needs, so the street address stays with the merchant.
+    ...(o.shipTo ? { ships_to: o.shipTo.split(',').pop()?.trim() } : {}),
     ...(o.trackingNumber ? { tracking: `${o.carrier ?? ''} ${o.trackingNumber}`.trim() } : {}),
     ...(o.refundReason ? { refund_reason: o.refundReason } : {}),
   };
