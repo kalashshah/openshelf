@@ -24,7 +24,7 @@ function when(ms: number | null | undefined): string {
 }
 
 function chip(s: string): string {
-  const cls = /^(paid|shipped|answered|active|connected)$/.test(s) ? 'ok' : /^(refunded|cancelled|sold out|inactive)$/.test(s) ? 'bad' : /^(created|waiting|needs answer|not connected)$/.test(s) ? 'warn' : '';
+  const cls = /^(paid|shipped|answered|active|connected|receiving payments|via your PayPal app)$/.test(s) ? 'ok' : /^(refunded|cancelled|sold out|inactive)$/.test(s) ? 'bad' : /^(created|waiting|needs answer|not connected)$/.test(s) ? 'warn' : '';
   return `<span class="chip ${cls}">${esc(s)}</span>`;
 }
 
@@ -126,7 +126,7 @@ function appNav(c: AppChrome): string {
   return `<nav class="app">${LOGO}<div class="links">${link('overview', '/app', 'Overview')}${link('products', '/app/products', 'Products')}${link('questions', '/app/questions', `Questions${c.unanswered ? ` <span class="chip warn">${c.unanswered}</span>` : ''}`)}${link('orders', '/app/orders', 'Orders')}${link('settings', '/app/settings', 'Settings')}</div>
 <div class="right"><a class="btn sm" href="/s/${esc(c.shop.slug)}" target="_blank">View store ↗</a><a class="btn sm" href="#" onclick="fetch('/api/auth/sign-out',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/'});return false">Sign out</a></div></nav>
 ${c.isDemoUser ? `<div class="note small">This is a demo store with its own sandbox PayPal. Buy anything with a PayPal sandbox buyer account; the store page shows test login details.</div>` : ''}
-${!c.canTakePayments ? `<div class="note err small">PayPal isn't connected, so agents can't buy yet. <a href="/app/settings">Connect PayPal</a></div>` : ''}${flash(c.note, c.error)}`;
+${!c.canTakePayments ? `<div class="note err small">Open Shelf doesn't know where to send your money yet, so agents can't buy. <a href="/app/settings">Add your PayPal</a></div>` : ''}${flash(c.note, c.error)}`;
 }
 
 function appPage(title: string, c: AppChrome, body: string, script = ''): string {
@@ -256,7 +256,7 @@ export function ordersPage(c: AppChrome, orders: Order[]): string {
   );
 }
 
-export function settingsPage(c: AppChrome, v: { publicUrl: string; webhook: boolean }): string {
+export function settingsPage(c: AppChrome, v: { publicUrl: string; webhook: boolean; mode: 'app' | 'payee' | 'demo' | null }): string {
   const s = c.shop;
   const connected = Boolean(s.paypalClientId);
   return appPage(
@@ -270,8 +270,15 @@ export function settingsPage(c: AppChrome, v: { publicUrl: string; webhook: bool
 <div class="grid2"><div class="fld"><label class="f">Refund window (days, automatic for shoppers' agents)</label><input class="f" name="refund_days" inputmode="numeric" value="${s.refundDays}"></div><div class="fld"><label class="f">Currency</label><input class="f" name="currency" maxlength="3" value="${esc(s.currency)}"></div></div>
 <div class="fld"><label class="row small"><input type="checkbox" name="listed" ${s.listed ? 'checked' : ''}> List my store in the public Open Shelf directory (${esc(v.publicUrl)}/mcp)</label></div>
 <button class="btn dark" style="margin-top:16px">Save</button></form>
-<form class="card" method="post" action="/app/paypal"><div class="cardhead"><h2>PayPal</h2>${connected ? chip('connected') : s.demo ? chip('demo sandbox') : chip('not connected')}</div>
-<p class="small muted" style="margin-top:0">Orders are created in this PayPal account and paid straight into it. Create an app at developer.paypal.com → Apps &amp; Credentials and paste its client id and secret. To import payment links, tick "Payment Links and Buttons" under the app's Features.${connected ? ` Connected app: <code>${esc(s.paypalClientId?.slice(0, 10))}…</code> (${esc(s.paypalEnv)}), webhooks ${v.webhook ? 'on' : 'off: orders complete when the buyer returns from PayPal'}.` : ''}</p>
+<form class="card" method="post" action="/app/payee"><div class="cardhead"><h2>Get paid</h2>${v.mode === 'payee' ? chip('receiving payments') : v.mode === 'app' ? chip('via your PayPal app') : s.demo ? chip('demo sandbox') : chip('not connected')}</div>
+<p class="small muted" style="margin-top:0">${
+    v.mode === 'app'
+      ? 'Orders are taken by your connected PayPal app below, so refunds and tracking also run through Open Shelf.'
+      : `Payments from shoppers and their agents go straight into this PayPal account${s.paypalPayeeEmail ? '' : ' (logging in with PayPal fills this in)'}. Refunds and tracking are then done in your own PayPal. Connect a PayPal app below for imports, automatic refunds and tracking.`
+  }</p>
+<div class="row"><input class="f" name="email" type="email" placeholder="you@yourpaypal.com" value="${esc(s.paypalPayeeEmail ?? '')}" style="flex:1;min-width:220px" ${v.mode === 'app' ? 'disabled' : ''}><button class="btn dark" ${v.mode === 'app' ? 'disabled' : ''}>Save</button></div></form>
+<form class="card" method="post" action="/app/paypal"><div class="cardhead"><h2>Connect a PayPal app <span class="small muted">(optional, for power features)</span></h2>${connected ? chip('connected') : chip('not connected')}</div>
+<p class="small muted" style="margin-top:0">With your own PayPal app connected, Open Shelf can import your payment links and invoices, refund automatically within your policy, and send tracking numbers to PayPal. Create an app at developer.paypal.com → Apps &amp; Credentials and paste its client id and secret. To import payment links, tick "Payment Links and Buttons" under the app's Features.${connected ? ` Connected app: <code>${esc(s.paypalClientId?.slice(0, 10))}…</code> (${esc(s.paypalEnv)}), webhooks ${v.webhook ? 'on' : 'off: orders complete when the buyer returns from PayPal'}.` : ''}</p>
 <div class="grid2"><div class="fld"><label class="f">Environment</label><select class="f" name="env"><option value="sandbox" ${s.paypalEnv === 'sandbox' ? 'selected' : ''}>Sandbox</option><option value="live" ${s.paypalEnv === 'live' ? 'selected' : ''}>Live</option></select></div><div class="fld"><label class="f">Client id</label><input class="f" name="client_id" required autocomplete="off" value="${esc(s.paypalClientId ?? '')}"></div></div>
 <div class="fld"><label class="f">Secret</label><input class="f" name="client_secret" type="password" required autocomplete="off" placeholder="${connected ? '•••••••• (paste again to change)' : ''}"></div>
 <button class="btn dark" style="margin-top:16px">${connected ? 'Update PayPal' : 'Connect PayPal'}</button></form>`,

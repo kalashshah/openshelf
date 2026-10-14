@@ -177,10 +177,20 @@ const requireShop = async (c: C, next: () => Promise<void>) => {
       shop = await store.createShop(user.id, user.name?.trim() ? `${user.name.trim()}'s shop` : `${user.email.split('@')[0]}'s shop`);
     }
   }
+  // Logged in with PayPal and nothing connected yet: sell straight into that PayPal account.
+  if (!store.paymentMode(shop) && !user.isAnonymous) {
+    const viaPayPal = await c.env.DB.prepare("SELECT 1 FROM account WHERE userId = ? AND providerId = 'paypal'").bind(user.id).first();
+    if (viaPayPal) {
+      await store.setPayee(shop, user.email);
+      shop = (await store.shopById(shop.id)) as Shop;
+    }
+  }
   c.set('user', user);
   c.set('shop', shop);
   return next();
 };
+
+const NEEDS_APP = 'Importing reads your own PayPal data, which needs your PayPal app connected (Settings → Connect a PayPal app). Payments already go to your PayPal without it.';
 app.use('/app', requireShop);
 app.use('/app/*', requireShop);
 
@@ -262,8 +272,8 @@ app.post('/app/products/:id/delete', async (c) => {
 app.post('/app/import/paypal', async (c) => {
   const shop = c.get('shop');
   const store = new Store(c.env);
-  const pp = await store.paypalFor(shop);
-  if (!pp) return back(c, '/app/products', undefined, 'Connect PayPal in Settings first.');
+  const pp = await store.ownPayPalFor(shop);
+  if (!pp) return back(c, '/app/products', undefined, store.paymentMode(shop) === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.');
   try {
     const links = await pp.listPayLinks();
     if (!links.length) return back(c, '/app/products', 'No payment links in this PayPal account yet. Create one in PayPal, or import from a website or text.');
@@ -297,8 +307,8 @@ app.post('/app/import/invoices', async (c) => {
   if (await overLimit(c, 'import')) return back(c, '/app/products', undefined, 'Too many imports at once; try again in a minute.');
   const shop = c.get('shop');
   const store = new Store(c.env);
-  const pp = await store.paypalFor(shop);
-  if (!pp) return back(c, '/app/products', undefined, 'Connect PayPal in Settings first.');
+  const pp = await store.ownPayPalFor(shop);
+  if (!pp) return back(c, '/app/products', undefined, store.paymentMode(shop) === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.');
   try {
     const lines = await pp.invoiceLines();
     if (!lines.length) return back(c, '/app/products', 'No invoices in this PayPal account yet.');
@@ -324,8 +334,8 @@ app.post('/app/import/text', async (c) => {
 app.post('/app/publish', async (c) => {
   const shop = c.get('shop');
   const store = new Store(c.env);
-  const pp = await store.paypalFor(shop);
-  if (!pp) return back(c, '/app/products', undefined, 'Connect PayPal in Settings first.');
+  const pp = await store.ownPayPalFor(shop);
+  if (!pp) return back(c, '/app/products', undefined, store.paymentMode(shop) === 'payee' ? NEEDS_APP : 'Connect PayPal in Settings first.');
   const todo = (await store.products(shop.id)).filter((p) => !p.paypalLinkId).slice(0, 20);
   let made = 0;
   try {
@@ -379,7 +389,17 @@ app.post('/app/orders/:id/sync', async (c) => {
   return back(c, '/app/orders', o.status === 'created' ? 'Still waiting for the buyer to approve in PayPal.' : `Order is ${o.status}.`);
 });
 
-app.get('/app/settings', async (c) => c.html(settingsPage(await chrome(c, 'settings'), { publicUrl: c.env.PUBLIC_URL, webhook: Boolean(c.get('shop').paypalWebhookId) })));
+app.get('/app/settings', async (c) =>
+  c.html(settingsPage(await chrome(c, 'settings'), { publicUrl: c.env.PUBLIC_URL, webhook: Boolean(c.get('shop').paypalWebhookId), mode: new Store(c.env).paymentMode(c.get('shop')) })),
+);
+
+app.post('/app/payee', async (c) => {
+  const f = await c.req.parseBody();
+  const email = String(f.email ?? '').trim().toLowerCase();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return back(c, '/app/settings', undefined, 'That is not an email address.');
+  await new Store(c.env).setPayee(c.get('shop'), email || null);
+  return back(c, '/app/settings', email ? `Payments now go to the PayPal account ${email}.` : 'Stopped receiving payments by email.');
+});
 
 app.post('/app/settings', async (c) => {
   const f = await c.req.parseBody();

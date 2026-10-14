@@ -25,6 +25,7 @@ export interface Shop {
   paypalSecretCt: string | null;
   paypalSecretIv: string | null;
   paypalWebhookId: string | null;
+  paypalPayeeEmail: string | null;
   createdAt: number;
 }
 
@@ -122,6 +123,7 @@ function shopFrom(r: Row): Shop {
     paypalSecretCt: s(r.paypal_secret_ct),
     paypalSecretIv: s(r.paypal_secret_iv),
     paypalWebhookId: s(r.paypal_webhook_id),
+    paypalPayeeEmail: s(r.paypal_payee_email),
     createdAt: Number(r.created_at),
   };
 }
@@ -279,19 +281,44 @@ export class Store {
     return notes;
   }
 
-  /** The shared sandbox app demo shops check out through. */
-  demoPayPal(): PayPal | null {
+  /** Open Shelf's own sandbox app: demo shops check out through it, and so do payee-mode shops (with their email as payee). */
+  demoPayPal(payeeEmail?: string): PayPal | null {
     if (!this.env.DEMO_PAYPAL_CLIENT_ID || !this.env.DEMO_PAYPAL_CLIENT_SECRET) return null;
-    return new PayPal({ env: 'sandbox', clientId: this.env.DEMO_PAYPAL_CLIENT_ID, clientSecret: this.env.DEMO_PAYPAL_CLIENT_SECRET, webhookId: this.env.DEMO_PAYPAL_WEBHOOK_ID });
+    return new PayPal({ env: 'sandbox', clientId: this.env.DEMO_PAYPAL_CLIENT_ID, clientSecret: this.env.DEMO_PAYPAL_CLIENT_SECRET, webhookId: this.env.DEMO_PAYPAL_WEBHOOK_ID, payeeEmail });
   }
 
-  /** The shop's own PayPal app, or the shared demo app for demo shops. Null = cannot take payments yet. */
+  /**
+   * How a shop gets paid:
+   * - 'app': its own PayPal app credentials. Everything works: imports, refunds, tracking.
+   * - 'payee': it logged in with PayPal; Open Shelf's app takes the order and the merchant's account is the payee.
+   *   Selling works; refunds and tracking happen in the merchant's own PayPal, and there is nothing to import from.
+   * - 'demo': a demo shop on the shared sandbox app.
+   */
+  paymentMode(shop: Shop): 'app' | 'payee' | 'demo' | null {
+    if (shop.paypalClientId && shop.paypalSecretCt && shop.paypalSecretIv) return 'app';
+    if (shop.paypalPayeeEmail && this.env.DEMO_PAYPAL_CLIENT_ID) return 'payee';
+    if (shop.demo && this.env.DEMO_PAYPAL_CLIENT_ID) return 'demo';
+    return null;
+  }
+
+  /** The PayPal client that takes this shop's orders. Null = cannot take payments yet. */
   async paypalFor(shop: Shop): Promise<PayPal | null> {
-    if (shop.paypalClientId && shop.paypalSecretCt && shop.paypalSecretIv) {
-      const secret = await new Sealer(this.env.MASTER_KEY).open(shop.paypalSecretCt, shop.paypalSecretIv);
-      return new PayPal({ env: shop.paypalEnv, clientId: shop.paypalClientId, clientSecret: secret, webhookId: shop.paypalWebhookId ?? undefined });
+    const mode = this.paymentMode(shop);
+    if (mode === 'app') {
+      const secret = await new Sealer(this.env.MASTER_KEY).open(shop.paypalSecretCt as string, shop.paypalSecretIv as string);
+      return new PayPal({ env: shop.paypalEnv, clientId: shop.paypalClientId as string, clientSecret: secret, webhookId: shop.paypalWebhookId ?? undefined });
     }
-    return shop.demo ? this.demoPayPal() : null;
+    if (mode === 'payee') return this.demoPayPal(shop.paypalPayeeEmail as string);
+    return mode === 'demo' ? this.demoPayPal() : null;
+  }
+
+  /** The PayPal account whose own data (payment links, invoices) can be read: never the platform app on a payee shop's behalf. */
+  async ownPayPalFor(shop: Shop): Promise<PayPal | null> {
+    return this.paymentMode(shop) === 'payee' ? null : this.paypalFor(shop);
+  }
+
+  async setPayee(shop: Shop, email: string | null): Promise<void> {
+    await this.db.prepare('UPDATE shops SET paypal_payee_email = ? WHERE id = ?').bind(email, shop.id).run();
   }
 
   // ---- products ----------------------------------------------------------------------
@@ -489,6 +516,10 @@ export class Store {
     if (!decision.allowed) return decision;
     const pp = await this.paypalFor(shop);
     if (!pp || !order.captureId) return { allowed: false, reason: 'This order has no PayPal capture to refund.' };
+    if (this.paymentMode(shop) === 'payee') {
+      // The money is in the merchant's own PayPal; only they can send it back.
+      return { allowed: false, reason: `The payment is in ${shop.name}'s PayPal account, so the refund is issued there (PayPal → Activity → this payment → Refund). The request was passed to the merchant.` };
+    }
     await pp.refundCapture(order.captureId, reason || `Refund from ${shop.name}`);
     await this.markRefunded(order.id, reason || null);
     return decision;

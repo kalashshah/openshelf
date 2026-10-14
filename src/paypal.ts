@@ -5,6 +5,8 @@ export interface PayPalConfig {
   clientSecret: string;
   env: 'sandbox' | 'live';
   webhookId?: string;
+  /** Set = Open Shelf's own app creates the order and this PayPal account receives the money (Log in with PayPal merchants). */
+  payeeEmail?: string;
 }
 
 const HOSTS = { sandbox: 'https://api-m.sandbox.paypal.com', live: 'https://api-m.paypal.com' } as const;
@@ -104,6 +106,7 @@ export class PayPal {
         purchase_units: [
           {
             reference_id: o.referenceId,
+            ...(this.cfg.payeeEmail ? { payee: { email_address: this.cfg.payeeEmail } } : {}),
             custom_id: o.referenceId,
             amount: { currency_code: o.currency, value: money(total), breakdown: { item_total: { currency_code: o.currency, value: money(total) } } },
             items: o.lines.map((l) => ({
