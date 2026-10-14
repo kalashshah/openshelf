@@ -182,7 +182,8 @@ export function ShopPage({ shop, products, publicUrl, canBuy, demo, error, focus
         <Footer
           title={shop.name}
           sub={shop.tagline || 'Independent shop'}
-          word={word.length > 2 ? word.slice(0, 12) : 'openshelf'}
+          word={word.length > 2 ? word : 'openshelf'}
+          owner={shop.name}
           links={[
             { href: `/s/${shop.slug}#shop`, label: 'Shop' },
             { href: `/s/${shop.slug}#ask`, label: 'Ask the shop' },

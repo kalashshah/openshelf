@@ -906,6 +906,7 @@ body {
 .wordmark-fancy {
   position: relative;
   display: inline-block;
+  padding: 0.04em 0.1em;
   color: var(--bg-strong-950);
   filter: drop-shadow(0 1px 2px rgba(27, 28, 29, 0.48)) drop-shadow(0 10px 24px rgba(14, 18, 27, 0.1));
   user-select: none;
@@ -914,6 +915,8 @@ body {
   content: attr(data-text);
   position: absolute;
   inset: 0;
+  /* Same padding as the word, so the sheen lines up with it and covers glyph overhang (the f's hook). */
+  padding: inherit;
   background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 52%);
   -webkit-background-clip: text;
   background-clip: text;
