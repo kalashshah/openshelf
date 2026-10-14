@@ -13,6 +13,11 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   EMAIL_FROM?: string;
+  /** Log in with PayPal (a PayPal app with that feature on). Absent: the button is hidden. */
+  PAYPAL_LOGIN_CLIENT_ID?: string;
+  PAYPAL_LOGIN_CLIENT_SECRET?: string;
+  /** "live" or "sandbox" (default). */
+  PAYPAL_LOGIN_ENV?: string;
 
   /** Backs the store agent and the AI product import. */
   ANTHROPIC_API_KEY: string;

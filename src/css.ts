@@ -98,6 +98,7 @@ textarea.f:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(28,28,28,.08)
 .feed .who{width:62px;flex:none}
 .hero{padding:56px 0 24px;max-width:780px}.hero h1{font-size:clamp(36px,5.4vw,60px);letter-spacing:-.035em}.hero .sub{font-size:18px;max-width:640px}
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}@media(max-width:820px){.steps{grid-template-columns:1fr}}
+.steps.four{grid-template-columns:repeat(4,1fr)}@media(max-width:1060px){.steps.four{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.steps.four{grid-template-columns:1fr}}
 .step{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}.step .k{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted)}
 pre.convo{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;font:13.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;margin:14px 0;overflow:auto}
 pre.convo b{color:var(--green)}pre.convo i{color:var(--muted);font-style:normal}

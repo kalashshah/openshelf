@@ -18,6 +18,8 @@ export interface OrderLine {
   name: string;
   /** Becomes the PayPal item SKU, so the merchant's PayPal activity names the product. */
   sku: string;
+  /** false = service or digital: no shipping address needed. */
+  ships?: boolean;
   quantity: number;
   unitCents: number;
 }
@@ -43,6 +45,7 @@ export interface PayLink {
   priceCents: number;
   currency: string;
   variants: { name: string; options: { label: string; price_cents?: number }[] }[];
+  needsShipping: boolean;
 }
 
 export class PayPal {
@@ -108,7 +111,7 @@ export class PayPal {
               sku: l.sku.slice(0, 127),
               quantity: String(l.quantity),
               unit_amount: { currency_code: o.currency, value: money(l.unitCents) },
-              category: 'PHYSICAL_GOODS',
+              category: l.ships === false ? 'DIGITAL_GOODS' : 'PHYSICAL_GOODS',
             })),
           },
         ],
@@ -116,7 +119,8 @@ export class PayPal {
           paypal: {
             experience_context: {
               brand_name: o.brandName.slice(0, 127),
-              shipping_preference: 'GET_FROM_FILE',
+              // PayPal collects an address only when something in the cart ships.
+              shipping_preference: o.lines.some((l) => l.ships !== false) ? 'GET_FROM_FILE' : 'NO_SHIPPING',
               user_action: 'PAY_NOW',
               return_url: o.returnUrl,
               cancel_url: o.cancelUrl,
@@ -156,6 +160,27 @@ export class PayPal {
     });
   }
 
+  // ---- invoices: what a service business has actually sold -----------------------------
+
+  /** Line items of the merchant's recent invoices, newest first, as plain lines for the importer. */
+  async invoiceLines(max = 40): Promise<string[]> {
+    const found = await this.api<{ items?: { id: string }[] }>('POST', `/v2/invoicing/search-invoices?page=1&page_size=${max}&total_required=false`, {});
+    // ponytail: one GET per invoice (search omits line items); capped at 40 for the Workers subrequest budget.
+    const full = await Promise.all(
+      (found.items ?? []).slice(0, max).map((i) =>
+        this.api<{ detail?: { invoice_date?: string; currency_code?: string }; status?: string; items?: { name: string; description?: string; quantity?: string; unit_amount?: RawMoney }[] }>(
+          'GET',
+          `/v2/invoicing/invoices/${encodeURIComponent(i.id)}`,
+        ),
+      ),
+    );
+    return full.flatMap((inv) =>
+      (inv.items ?? []).map(
+        (it) => `${inv.detail?.invoice_date ?? ''} invoice (${inv.status ?? ''}): ${it.name}${it.description ? ` (${it.description})` : ''}, qty ${it.quantity ?? 1}, ${it.unit_amount?.value ?? '?'} ${it.unit_amount?.currency_code ?? inv.detail?.currency_code ?? ''}`,
+      ),
+    );
+  }
+
   // ---- payment links (the "store" small merchants already have) ----------------
 
   async listPayLinks(max = 100): Promise<PayLink[]> {
@@ -176,7 +201,7 @@ export class PayPal {
     return out.slice(0, max);
   }
 
-  async createPayLink(p: { name: string; description: string; priceCents: number; currency: string; returnUrl: string }): Promise<{ id: string; url: string }> {
+  async createPayLink(p: { name: string; description: string; priceCents: number; currency: string; returnUrl: string; ships: boolean }): Promise<{ id: string; url: string }> {
     const r = await this.api<RawPayLink>('POST', '/v1/checkout/payment-resources', {
       integration_mode: 'LINK',
       type: 'BUY_NOW',
@@ -187,7 +212,7 @@ export class PayPal {
           name: p.name.slice(0, 127),
           ...(p.description ? { description: p.description.slice(0, 2048) } : {}),
           unit_amount: { currency_code: p.currency, value: money(p.priceCents) },
-          collect_shipping_address: true,
+          collect_shipping_address: p.ships,
         },
       ],
     });
@@ -271,6 +296,7 @@ interface RawPayLink {
     name?: string;
     description?: string;
     unit_amount?: RawMoney;
+    collect_shipping_address?: boolean;
     variants?: { dimensions?: { name: string; primary?: boolean; options?: { label: string; unit_amount?: RawMoney }[] }[] };
   }[];
 }
@@ -299,14 +325,18 @@ function payLinkUrl(r: RawPayLink): string | undefined {
 export function toPayLink(r: RawPayLink): PayLink | null {
   const item = r.line_items?.[0];
   if (!item?.name) return null;
+  // A link whose primary option carries prices has no item-level price: the cheapest option is the "from" price.
+  const optionPrices = (item.variants?.dimensions ?? []).flatMap((d) => (d.primary ? (d.options ?? []) : [])).flatMap((o) => (o.unit_amount ? [o.unit_amount] : []));
+  const base = (item.unit_amount && toCents(item.unit_amount.value) > 0 ? item.unit_amount : undefined) ?? [...optionPrices].sort((a, b) => toCents(a.value) - toCents(b.value))[0];
   return {
     id: r.id,
     url: payLinkUrl(r) ?? '',
     active: (r.status ?? 'ACTIVE') === 'ACTIVE',
     name: item.name,
     description: item.description ?? '',
-    priceCents: toCents(item.unit_amount?.value),
-    currency: item.unit_amount?.currency_code ?? 'USD',
+    priceCents: toCents(base?.value),
+    currency: base?.currency_code ?? 'USD',
+    needsShipping: item.collect_shipping_address !== false,
     variants: (item.variants?.dimensions ?? []).map((d) => ({
       name: d.name,
       options: (d.options ?? []).map((o) => ({ label: o.label, ...(d.primary && o.unit_amount ? { price_cents: toCents(o.unit_amount.value) } : {}) })),

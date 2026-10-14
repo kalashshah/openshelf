@@ -84,13 +84,15 @@ function demo(b){b.disabled=true;b.textContent='Setting up your demo store…';p
 
 const GOOGLE = `<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
 
-export function loginPage(opts: { google: boolean; next?: string }): string {
+const PAYPAL_MARK = `<svg class="gmark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#003087" d="M7.3 21.2H3.9a.5.5 0 0 1-.5-.6L6.1 3.4A.8.8 0 0 1 6.9 2.7h6.3c3.3 0 5.4 1.7 4.8 5-.7 3.9-3.3 5.6-7 5.6H9.4a.8.8 0 0 0-.8.7z"/><path fill="#0070E0" d="M18.6 7.6c-.7 3.8-3.3 5.9-6.9 5.9h-1.2a.8.8 0 0 0-.8.7l-1 6.3-.3 1.7a.5.5 0 0 0 .5.6h3a.7.7 0 0 0 .7-.6l.7-4.5a.7.7 0 0 1 .7-.6h.6c3 0 5.2-1.6 5.8-4.8.4-2.1-.2-3.6-1.8-4.7z"/></svg>`;
+
+export function loginPage(opts: { google: boolean; paypal: boolean; next?: string }): string {
   return layout(
     'Sign in · Open Shelf',
     `<div class="auth"><div class="rise">${LOGO}</div><h1 class="rise" style="--d:.05s">Open your shelf.</h1><p class="sub rise" style="--d:.1s">Sign in with a one-time code. No password to remember.</p>
 <div class="card rise" style="--d:.15s;margin:0"><div id="step1"><div class="fld" style="margin-top:0"><label class="f" for="email">Email</label><input class="f" id="email" type="email" autocomplete="email" placeholder="you@yourshop.com"></div>
 <button class="btn dark block lg" style="margin-top:16px" onclick="sendCode()">Email me a code</button>
-${opts.google ? `<div class="or">or</div><button class="btn block lg" onclick="google()">${GOOGLE}Continue with Google</button>` : ''}</div>
+${opts.paypal || opts.google ? '<div class="or">or</div>' : ''}${opts.paypal ? `<button class="btn block lg" onclick="social('paypal')">${PAYPAL_MARK}Log in with PayPal</button>` : ''}${opts.google ? `<button class="btn block lg" style="margin-top:8px" onclick="social('google')">${GOOGLE}Continue with Google</button>` : ''}</div>
 <div id="step2" style="display:none"><p class="sub" style="margin:0">We sent a 6-digit code to <b id="sentTo"></b>.</p><div class="fld"><label class="f" for="otp">Code</label><input class="f otp" id="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" maxlength="6"></div>
 <button class="btn dark block lg" style="margin-top:16px" onclick="verify()">Sign in</button><p class="small muted" style="text-align:center;margin:14px 0 0"><a href="#" onclick="back();return false">Use a different email</a></p></div>
 <p id="err" class="small" style="color:var(--red);display:none;margin:12px 0 0"></p></div>
@@ -101,7 +103,7 @@ function err(m){var e=document.getElementById('err');e.textContent=m;e.style.dis
 function sendCode(){var email=document.getElementById('email').value.trim();if(!email)return err('Enter your email');err('');post('/api/auth/email-otp/send-verification-otp',{email:email,type:'sign-in'}).then(function(r){if(!r.ok)return err(r.j.message||'Could not send the code');document.getElementById('sentTo').textContent=email;document.getElementById('step1').style.display='none';document.getElementById('step2').style.display='block';document.getElementById('otp').focus()})}
 function verify(){var email=document.getElementById('email').value.trim();var otp=document.getElementById('otp').value.trim();if(otp.length<6)return err('Enter the 6-digit code');err('');post('/api/auth/sign-in/email-otp',{email:email,otp:otp}).then(function(r){if(!r.ok)return err(r.j.message||'That code did not work');location.href=NEXT})}
 function back(){document.getElementById('step2').style.display='none';document.getElementById('step1').style.display='block'}
-function google(){post('/api/auth/sign-in/social',{provider:'google',callbackURL:NEXT}).then(function(r){if(r.j.url)location.href=r.j.url;else err('Google sign-in is not available')})}
+function social(p){post('/api/auth/sign-in/social',{provider:p,callbackURL:NEXT,errorCallbackURL:'/login'}).then(function(r){if(r.j.url)location.href=r.j.url;else err((r.j&&r.j.message)||'That sign-in is not available')})}
 document.getElementById('otp').addEventListener('keydown',function(e){if(e.key==='Enter')verify()});document.getElementById('email').addEventListener('keydown',function(e){if(e.key==='Enter')sendCode()});`,
     },
   );
@@ -172,7 +174,7 @@ export function productsPage(c: AppChrome, products: Product[]): string {
 <td><a href="/app/products/${esc(p.id)}"><b>${esc(p.name)}</b></a><div class="small muted">${esc(p.description.slice(0, 110))}${p.description.length > 110 ? '…' : ''}</div></td>
 <td class="r num">${esc(fmt(p.priceCents, c.shop.currency))}</td><td class="small">${esc(variantText(p.variants, c.shop.currency).replace(/\n/g, '; ')) || '<span class="muted">none</span>'}</td>
 <td class="r num">${p.stock === null ? '<span class="muted">∞</span>' : p.stock === 0 ? chip('sold out') : p.stock}</td>
-<td>${p.active ? '' : chip('inactive')} ${chip(p.source.replace('_', ' '))} ${p.paypalLinkUrl ? `<a class="small" href="${esc(p.paypalLinkUrl)}" target="_blank">PayPal link ↗</a>` : ''}</td></tr>`,
+<td>${p.active ? '' : chip('inactive')} ${chip(p.source.replace('_', ' '))} ${p.needsShipping ? '' : chip('service')} ${p.paypalLinkUrl ? `<a class="small" href="${esc(p.paypalLinkUrl)}" target="_blank">PayPal link ↗</a>` : ''}</td></tr>`,
         )
         .join('')
     : `<tr><td colspan="6"><p class="empty">No products yet. Import them above or add one.</p></td></tr>`;
@@ -180,8 +182,9 @@ export function productsPage(c: AppChrome, products: Product[]): string {
     'Products',
     c,
     `<div class="head rise"><div><h1>Products</h1><p class="sub">Everything here is what your store agent knows and sells. Bring in what you already have, then tidy it up.</p></div><a class="btn dark" href="/app/products/new">Add a product</a></div>
-<div class="steps" style="margin-top:0">
+<div class="steps four" style="margin-top:0">
 <form class="step" method="post" action="/app/import/paypal" onsubmit="busy(this)"><div class="k">from PayPal</div><h3 style="margin:6px 0">Your payment links</h3><p class="small muted">Every PayPal payment link (Pay Links &amp; Buttons) becomes a product, with its price and options.</p><button class="btn dark sm">Import payment links</button></form>
+<form class="step" method="post" action="/app/import/invoices" onsubmit="busy(this)"><div class="k">from PayPal</div><h3 style="margin:6px 0">Your invoices</h3><p class="small muted">Sell services? Claude turns what you've invoiced into offerings agents can book and pay for.</p><button class="btn dark sm">Import from invoices</button></form>
 <form class="step" method="post" action="/app/import/url" onsubmit="busy(this)"><div class="k">from a website</div><h3 style="margin:6px 0">Shopify or any shop page</h3><input class="f sm" name="url" type="url" required placeholder="https://yourshop.com"><button class="btn dark sm" style="margin-top:8px">Import</button></form>
 <form class="step" method="post" action="/app/import/text" onsubmit="busy(this)"><div class="k">from text</div><h3 style="margin:6px 0">Paste a price list or CSV</h3><textarea class="f" name="text" required placeholder="Lavender soap bar, $8, 100 g&#10;Gift box of 3 soaps, $21" style="min-height:64px;font-size:14px"></textarea><button class="btn dark sm" style="margin-top:8px">Read it with AI</button></form></div>
 <div class="card"><div class="cardhead"><h2>On the shelf (${products.length})</h2>${products.some((p) => !p.paypalLinkId) ? `<form method="post" action="/app/publish" onsubmit="busy(this)"><button class="btn sm" title="Creates a PayPal payment link for each product that doesn't have one, so you can also share them anywhere">Create PayPal links for the rest</button></form>` : ''}</div>
@@ -202,6 +205,7 @@ export function productEditPage(c: AppChrome, p: Product | null): string {
 <div class="grid2"><div class="fld"><label class="f">Image URL</label><input class="f" name="image_url" type="url" value="${v('imageUrl')}"></div><div class="fld"><label class="f">Stock (blank = not tracked)</label><input class="f" name="stock" inputmode="numeric" value="${p?.stock ?? ''}"></div></div>
 <div class="fld"><label class="f">Options, one per line: Name: choice | choice=price</label><textarea class="f" name="variants" placeholder="Size: 50 ml=24.00 | 100 ml=38.00&#10;Scent: Unscented | Lavender" style="min-height:70px;font-family:ui-monospace,Menlo,monospace;font-size:13.5px">${esc(p ? variantText(p.variants) : '')}</textarea></div>
 <div class="fld"><label class="row small"><input type="checkbox" name="active" ${!p || p.active ? 'checked' : ''}> On the shelf (agents and shoppers can see and buy it)</label></div>
+<div class="fld" style="margin-top:8px"><label class="row small"><input type="checkbox" name="ships" ${!p || p.needsShipping ? 'checked' : ''}> Ships to the buyer (untick for services and digital products: no address is asked)</label></div>
 <div class="row" style="margin-top:18px"><button class="btn dark">Save</button>${p ? `<button class="btn danger" formaction="/app/products/${esc(p.id)}/delete" onclick="return confirm('Delete ${esc(p.name).replace(/'/g, '')}?')">Delete</button>` : ''}${p?.paypalLinkUrl ? `<a class="small right" href="${esc(p.paypalLinkUrl)}" target="_blank">PayPal payment link ↗</a>` : ''}</div></form>`,
   );
 }

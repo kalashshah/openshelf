@@ -42,6 +42,7 @@ export function shopContext(shop: Shop, products: Product[], knowledge: { questi
     lines.push(
       `- id ${p.id}: ${p.name}, ${fmt(p.priceCents, shop.currency)}` +
         (p.stock === null ? '' : p.stock === 0 ? ' (sold out)' : ` (${p.stock} in stock)`) +
+        (p.needsShipping ? '' : ' (service or digital: nothing is shipped)') +
         variantText(p.variants, shop.currency),
     );
     if (p.description.trim()) lines.push(`  ${p.description.trim().replace(/\s+/g, ' ')}`);
@@ -86,6 +87,7 @@ const Extracted = z.object({
       description: z.string(),
       price: z.number().describe('Unit price as a number in the shop currency, e.g. 24.5'),
       image_url: z.string().nullable(),
+      needs_shipping: z.boolean().describe('false for services, bookings, digital downloads and anything not mailed'),
       variants: z.array(z.object({ name: z.string(), options: z.array(z.object({ label: z.string(), price: z.number().nullable() })) })),
     }),
   ),
@@ -97,6 +99,7 @@ export interface DraftProduct {
   priceCents: number;
   imageUrl: string | null;
   variants: Variant[];
+  needsShipping: boolean;
 }
 
 /** Products from whatever the merchant has: a shop page, an Instagram bio, a pasted price list or CSV. */
@@ -107,7 +110,7 @@ export async function extractProducts(env: Env, source: string): Promise<DraftPr
     ...FALLBACK,
     output_config: { effort: 'low', format: betaZodOutputFormat(Extracted) },
     system:
-      'You turn a small business\'s existing material (a web page, a social profile, a price list, a CSV) into a product catalog. Include only things a customer can buy at a stated price. Keep each description factual and taken from the material: what it is, size, materials or ingredients, who it suits; do not invent claims. Use absolute image URLs that appear in the material, or null. Variants are choices the buyer makes (size, colour, scent); give an option a price only when it differs from the base price. Return at most 40 products.',
+      'You turn a small business\'s existing material (a web page, a social profile, a price list, a CSV) into a product catalog. Include only things a customer can buy at a stated price. Keep each description factual and taken from the material: what it is, size, materials or ingredients, who it suits; do not invent claims. Use absolute image URLs that appear in the material, or null. Services and digital products do not need shipping. If the material is past invoices or receipts, turn repeated or dated line items into the offerings a new customer could buy ("Website maintenance: September" becomes a monthly "Website maintenance"), using the most recent price, and leave out one-off deposits and partial payments. Variants are choices the buyer makes (size, colour, scent); give an option a price only when it differs from the base price. Return at most 40 products.',
     messages: [{ role: 'user', content: source.slice(0, 120_000) }],
   });
   if (res.stop_reason === 'refusal' || !res.parsed_output) return [];
@@ -118,6 +121,7 @@ export async function extractProducts(env: Env, source: string): Promise<DraftPr
       description: p.description.trim(),
       priceCents: toCents(p.price),
       imageUrl: p.image_url && /^https?:\/\//.test(p.image_url) ? p.image_url : null,
+      needsShipping: p.needs_shipping,
       variants: cleanVariants(p.variants.map((v) => ({ name: v.name, options: v.options.map((o) => ({ label: o.label, ...(o.price != null ? { price_cents: toCents(o.price) } : {}) })) }))),
     }));
 }
@@ -147,7 +151,7 @@ interface ShopifyProduct {
   body_html?: string;
   images?: { src: string }[];
   options?: { name: string; values: string[] }[];
-  variants?: { price: string; option1?: string | null; available?: boolean }[];
+  variants?: { price: string; option1?: string | null; available?: boolean; requires_shipping?: boolean }[];
 }
 
 function fromShopify(p: ShopifyProduct): DraftProduct {
@@ -162,7 +166,7 @@ function fromShopify(p: ShopifyProduct): DraftProduct {
       return cents !== undefined && cents !== base ? { label, price_cents: cents } : { label };
     }),
   }));
-  return { name: p.title, description: stripHtml(p.body_html ?? '').slice(0, 1500), priceCents: base, imageUrl: p.images?.[0]?.src ?? null, variants: cleanVariants(variants) };
+  return { name: p.title, description: stripHtml(p.body_html ?? '').slice(0, 1500), priceCents: base, imageUrl: p.images?.[0]?.src ?? null, variants: cleanVariants(variants), needsShipping: p.variants?.[0]?.requires_shipping !== false };
 }
 
 /** What Claude reads of a page: JSON-LD (most stores publish Product data), image URLs with alt text, then visible text. */

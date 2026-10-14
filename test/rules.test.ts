@@ -78,6 +78,13 @@ describe('PayPal shapes', () => {
     });
     expect(link).toMatchObject({ name: 'Tote', priceCents: 3000, url: 'https://www.sandbox.paypal.com/ncp/payment/PLB-1', variants: [{ name: 'Color', options: [{ label: 'Black', price_cents: 3250 }, { label: 'Natural' }] }] });
   });
+  it('prices a link with only option-level prices from its cheapest option', () => {
+    const link = toPayLink({
+      id: 'PLB-2',
+      line_items: [{ name: 'Notebook', unit_amount: { currency_code: 'USD', value: '0.00' }, variants: { dimensions: [{ name: 'Cover', primary: true, options: [{ label: 'Canvas', unit_amount: { currency_code: 'USD', value: '32.00' } }, { label: 'Linen', unit_amount: { currency_code: 'USD', value: '28.00' } }] }] } }],
+    });
+    expect(link?.priceCents).toBe(2800);
+  });
   it('reads a captured order and totals lines', () => {
     const o = toOrder({
       id: 'O1',

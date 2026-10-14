@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth';
-import { anonymous, emailOTP } from 'better-auth/plugins';
+import { anonymous, emailOTP, genericOAuth } from 'better-auth/plugins';
 import type { Env } from './env';
 
 type Auth = ReturnType<typeof betterAuth>;
@@ -10,8 +10,9 @@ const instances = new WeakMap<object, Auth>();
 export function getAuth(env: Env): Auth {
   const cached = instances.get(env.DB);
   if (cached) return cached;
-  const google =
-    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : undefined;
+  const socialProviders = {
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
+  };
   // Cast once: better-auth's plugin generics make the configured type incompatible with the plain one.
   const auth = betterAuth({
     database: env.DB as unknown as never,
@@ -20,7 +21,9 @@ export function getAuth(env: Env): Auth {
     trustedOrigins: [env.PUBLIC_URL],
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
-    ...(google ? { socialProviders: google } : {}),
+    socialProviders,
+    // Same email through a code, Google or PayPal = same account and shop.
+    account: { accountLinking: { enabled: true, trustedProviders: ['google', 'paypal'] } },
     plugins: [
       emailOTP({
         otpLength: 6,
@@ -31,6 +34,7 @@ export function getAuth(env: Env): Auth {
       }),
       // "Try the demo": a judge gets a throwaway account and a seeded shop without an email round-trip.
       anonymous({ emailDomainName: 'demo.openshelf.local' }),
+      ...(paypalLoginEnabled(env) ? [paypalLogin(env)] : []),
     ],
   }) as unknown as Auth;
   instances.set(env.DB, auth);
@@ -58,6 +62,43 @@ export async function sessionUser(env: Env, headers: Headers): Promise<SessionUs
 
 export function googleEnabled(env: Env): boolean {
   return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+}
+
+/**
+ * Log in with PayPal. Generic OAuth rather than better-auth's built-in provider, which sends no scope
+ * (PayPal then returns no email). The PayPal app needs "Log in with PayPal" on, the email and name
+ * attributes ticked, and <PUBLIC_URL>/api/auth/callback/paypal as a return URL.
+ */
+function paypalLogin(env: Env) {
+  const live = env.PAYPAL_LOGIN_ENV === 'live';
+  const web = live ? 'https://www.paypal.com' : 'https://www.sandbox.paypal.com';
+  const api = live ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+  return genericOAuth({
+    config: [
+      {
+        providerId: 'paypal',
+        name: 'PayPal',
+        clientId: env.PAYPAL_LOGIN_CLIENT_ID as string,
+        clientSecret: env.PAYPAL_LOGIN_CLIENT_SECRET as string,
+        authorizationUrl: `${web}/signin/authorize`,
+        tokenUrl: `${api}/v1/oauth2/token`,
+        scopes: ['openid', 'email', 'profile'],
+        authentication: 'basic',
+        pkce: false,
+        async getUserInfo(tokens) {
+          const res = await fetch(`${api}/v1/identity/oauth2/userinfo?schema=openid`, { headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: 'application/json' } });
+          if (!res.ok) return null;
+          const u = (await res.json()) as { sub?: string; user_id?: string; name?: string; email?: string; email_verified?: boolean };
+          const id = u.sub ?? u.user_id;
+          return id && u.email ? { id, email: u.email, name: u.name ?? u.email.split('@')[0], emailVerified: u.email_verified ?? true } : null;
+        },
+      },
+    ],
+  });
+}
+
+export function paypalLoginEnabled(env: Env): boolean {
+  return Boolean(env.PAYPAL_LOGIN_CLIENT_ID && env.PAYPAL_LOGIN_CLIENT_SECRET);
 }
 
 /** Login codes go out through Cloudflare Email Sending; with no binding they are logged, so local login still works. */

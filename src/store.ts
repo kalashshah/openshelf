@@ -37,6 +37,8 @@ export interface Product {
   imageUrl: string | null;
   variants: Variant[];
   stock: number | null;
+  /** false = a service or digital product; checkout skips the shipping address. */
+  needsShipping: boolean;
   source: string;
   paypalLinkId: string | null;
   paypalLinkUrl: string | null;
@@ -63,6 +65,7 @@ export interface OrderItem {
   variant: string;
   quantity: number;
   unit_cents: number;
+  ships?: boolean;
 }
 
 export interface Order {
@@ -133,6 +136,7 @@ function productFrom(r: Row): Product {
     imageUrl: s(r.image_url),
     variants: JSON.parse(String(r.variants_json || '[]')) as Variant[],
     stock: n(r.stock),
+    needsShipping: r.needs_shipping == null ? true : Boolean(r.needs_shipping),
     source: String(r.source),
     paypalLinkId: s(r.paypal_link_id),
     paypalLinkUrl: s(r.paypal_link_url),
@@ -259,7 +263,8 @@ export class Store {
     const pp = new PayPal({ env: input.env, clientId: input.clientId, clientSecret: input.clientSecret });
     let webhookId: string | null = null;
     try {
-      webhookId = await pp.registerWebhook(`${this.env.PUBLIC_URL}/webhooks/paypal/${shop.id}`);
+      // One URL per deployment, not per shop: PayPal allows 10 webhooks per app, and the handler finds the shop from the order.
+      webhookId = await pp.registerWebhook(`${this.env.PUBLIC_URL}/webhooks/paypal/app`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/auth failed/.test(msg)) throw e;
@@ -274,15 +279,19 @@ export class Store {
     return notes;
   }
 
+  /** The shared sandbox app demo shops check out through. */
+  demoPayPal(): PayPal | null {
+    if (!this.env.DEMO_PAYPAL_CLIENT_ID || !this.env.DEMO_PAYPAL_CLIENT_SECRET) return null;
+    return new PayPal({ env: 'sandbox', clientId: this.env.DEMO_PAYPAL_CLIENT_ID, clientSecret: this.env.DEMO_PAYPAL_CLIENT_SECRET, webhookId: this.env.DEMO_PAYPAL_WEBHOOK_ID });
+  }
+
   /** The shop's own PayPal app, or the shared demo app for demo shops. Null = cannot take payments yet. */
   async paypalFor(shop: Shop): Promise<PayPal | null> {
     if (shop.paypalClientId && shop.paypalSecretCt && shop.paypalSecretIv) {
       const secret = await new Sealer(this.env.MASTER_KEY).open(shop.paypalSecretCt, shop.paypalSecretIv);
       return new PayPal({ env: shop.paypalEnv, clientId: shop.paypalClientId, clientSecret: secret, webhookId: shop.paypalWebhookId ?? undefined });
     }
-    if (shop.demo && this.env.DEMO_PAYPAL_CLIENT_ID && this.env.DEMO_PAYPAL_CLIENT_SECRET)
-      return new PayPal({ env: 'sandbox', clientId: this.env.DEMO_PAYPAL_CLIENT_ID, clientSecret: this.env.DEMO_PAYPAL_CLIENT_SECRET, webhookId: this.env.DEMO_PAYPAL_WEBHOOK_ID });
-    return null;
+    return shop.demo ? this.demoPayPal() : null;
   }
 
   // ---- products ----------------------------------------------------------------------
@@ -301,10 +310,10 @@ export class Store {
     const id = p.id ?? shortId('p');
     await this.db
       .prepare(
-        `INSERT INTO products (id, shop_id, name, description, price_cents, image_url, variants_json, stock, source, paypal_link_id, paypal_link_url, active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO products (id, shop_id, name, description, price_cents, image_url, variants_json, stock, needs_shipping, source, paypal_link_id, paypal_link_url, active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, price_cents = excluded.price_cents,
-           image_url = excluded.image_url, variants_json = excluded.variants_json, stock = excluded.stock, active = excluded.active,
+           image_url = excluded.image_url, variants_json = excluded.variants_json, stock = excluded.stock, needs_shipping = excluded.needs_shipping, active = excluded.active,
            paypal_link_id = excluded.paypal_link_id, paypal_link_url = excluded.paypal_link_url`,
       )
       .bind(
@@ -316,6 +325,7 @@ export class Store {
         p.imageUrl || null,
         JSON.stringify(cleanVariants(p.variants ?? [])),
         p.stock ?? null,
+        p.needsShipping === false ? 0 : 1,
         p.source ?? 'manual',
         p.paypalLinkId ?? null,
         p.paypalLinkUrl ?? null,
@@ -344,6 +354,7 @@ export class Store {
         description: prev?.description || l.description,
         priceCents: l.priceCents,
         variants: l.variants,
+        needsShipping: l.needsShipping,
         source: 'paypal_link',
         paypalLinkId: l.id,
         paypalLinkUrl: l.url,
@@ -404,10 +415,10 @@ export class Store {
       const qty = Math.max(1, Math.min(99, Math.floor(line.quantity ?? 1)));
       if (p.stock !== null && p.stock < qty) throw new UserError(p.stock === 0 ? `${p.name} is sold out.` : `Only ${p.stock} of ${p.name} left.`);
       const priced = priceFor(p, line.options ?? {});
-      items.push({ product_id: p.id, name: p.name, variant: priced.label, quantity: qty, unit_cents: priced.unitCents });
+      items.push({ product_id: p.id, name: p.name, variant: priced.label, quantity: qty, unit_cents: priced.unitCents, ships: p.needsShipping });
     }
     const id = shortId('o');
-    const lines: OrderLine[] = items.map((i) => ({ name: i.variant ? `${i.name} (${i.variant})` : i.name, sku: i.product_id, quantity: i.quantity, unitCents: i.unit_cents }));
+    const lines: OrderLine[] = items.map((i) => ({ name: i.variant ? `${i.name} (${i.variant})` : i.name, sku: i.product_id, quantity: i.quantity, unitCents: i.unit_cents, ships: i.ships !== false }));
     const total = orderTotalCents(lines);
     if (total <= 0) throw new UserError('The order total must be above zero.');
     const pporder = await pp.createOrder({

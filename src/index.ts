@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { askStore, extractProducts, productsFromUrl, shopContext, type DraftProduct } from './agent';
-import { getAuth, googleEnabled, sessionUser, type SessionUser } from './auth';
+import { getAuth, googleEnabled, paypalLoginEnabled, sessionUser, type SessionUser } from './auth';
 import type { Env } from './env';
 import { INSTRUCTIONS, registerTools } from './mcp';
 import {
@@ -32,7 +32,7 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth(c.env).handler(c.req.raw))
 app.get('/', async (c) => ((await sessionUser(c.env, c.req.raw.headers)) ? c.redirect('/app') : c.html(landingPage(c.env.PUBLIC_URL))));
 app.get('/login', (c) => {
   const next = c.req.query('next');
-  return c.html(loginPage({ google: googleEnabled(c.env), next: next?.startsWith('/') ? next : '/app' }));
+  return c.html(loginPage({ google: googleEnabled(c.env), paypal: paypalLoginEnabled(c.env), next: next?.startsWith('/') ? next : '/app' }));
 });
 
 /** Store-agent questions and AI imports cost model tokens, so each caller gets a budget. */
@@ -144,7 +144,8 @@ app.get('/checkout/cancel', async (c) => {
 
 // ---- PayPal webhooks: completes sales whose buyer never came back to the return page ------------------
 
-app.post('/webhooks/paypal/:shopId', async (c) => {
+// /webhooks/paypal/demo = the demo app's webhook; /webhooks/paypal/app = every merchant app's webhook.
+app.post('/webhooks/paypal/:hook', async (c) => {
   const raw = await c.req.text();
   const event = JSON.parse(raw) as { event_type?: string; resource?: { id?: string; supplementary_data?: { related_ids?: { order_id?: string } } } };
   const orderId = event.event_type === 'CHECKOUT.ORDER.APPROVED' ? event.resource?.id : event.resource?.supplementary_data?.related_ids?.order_id;
@@ -153,7 +154,8 @@ app.post('/webhooks/paypal/:shopId', async (c) => {
   const shop = order ? await store.shopById(order.shopId) : null;
   // Not ours (Penny or another app on the same PayPal app): acknowledge so PayPal stops retrying.
   if (!order || !shop) return c.json({ ok: true, ignored: true });
-  const pp = await store.paypalFor(shop);
+  // Verify with the webhook id of the URL PayPal called: an app connected to both carries two webhooks.
+  const pp = c.req.param('hook') === 'demo' ? store.demoPayPal() : await store.paypalFor(shop);
   if (c.env.WEBHOOK_VERIFY !== 'off' && !(pp && (await pp.verifyWebhook(c.req.raw.headers, raw)))) return c.json({ error: 'bad signature' }, 401);
   if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') await store.markRefunded(order.id, null);
   else await store.sync(shop, order);
@@ -247,6 +249,7 @@ app.post('/app/products/:id', async (c) => {
     stock: stockText === '' ? null : Math.max(0, Number.parseInt(stockText, 10) || 0),
     variants: parseVariantText(String(f.variants ?? '')),
     active: f.active === 'on',
+    needsShipping: f.ships === 'on',
   });
   return back(c, '/app/products', `Saved ${saved.name}.`);
 });
@@ -289,6 +292,25 @@ app.post('/app/import/url', async (c) => {
   }
 });
 
+/** Service businesses rarely have payment links, but their PayPal invoices list what they sell. */
+app.post('/app/import/invoices', async (c) => {
+  if (await overLimit(c, 'import')) return back(c, '/app/products', undefined, 'Too many imports at once; try again in a minute.');
+  const shop = c.get('shop');
+  const store = new Store(c.env);
+  const pp = await store.paypalFor(shop);
+  if (!pp) return back(c, '/app/products', undefined, 'Connect PayPal in Settings first.');
+  try {
+    const lines = await pp.invoiceLines();
+    if (!lines.length) return back(c, '/app/products', 'No invoices in this PayPal account yet.');
+    const drafts = await extractProducts(c.env, `PayPal invoices of ${shop.name}, newest first:\n${lines.join('\n')}`);
+    if (!drafts.length) return back(c, '/app/products', undefined, 'Claude found nothing sellable in those invoices.');
+    const n = await saveDrafts(store, shop.id, drafts, 'invoices');
+    return back(c, '/app/products', `Claude read ${lines.length} invoice lines and made ${n} offerings. Check prices and descriptions below.`);
+  } catch (e) {
+    return back(c, '/app/products', undefined, e instanceof Error ? e.message : String(e));
+  }
+});
+
 app.post('/app/import/text', async (c) => {
   if (await overLimit(c, 'import')) return back(c, '/app/products', undefined, 'Too many imports at once; try again in a minute.');
   const f = await c.req.parseBody();
@@ -308,7 +330,7 @@ app.post('/app/publish', async (c) => {
   let made = 0;
   try {
     for (const p of todo) {
-      const link = await pp.createPayLink({ name: p.name, description: p.description, priceCents: p.priceCents, currency: shop.currency, returnUrl: `${c.env.PUBLIC_URL}/s/${shop.slug}` });
+      const link = await pp.createPayLink({ name: p.name, description: p.description, priceCents: p.priceCents, currency: shop.currency, returnUrl: `${c.env.PUBLIC_URL}/s/${shop.slug}`, ships: p.needsShipping });
       await store.saveProduct(shop.id, { ...p, paypalLinkId: link.id, paypalLinkUrl: link.url });
       made++;
     }
