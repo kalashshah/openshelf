@@ -1,4 +1,4 @@
-import { brandOf, mainImage, marketOf, type C3Product } from './channel3';
+import { brandOf, DISTRIBUTION, mainImage, marketOf, type C3Connection, type C3Product } from './channel3';
 import { CSS } from './css';
 import { fmt, type Order, type Product, type Question, type Shop, type Variant } from './store';
 
@@ -136,6 +136,7 @@ export interface OverviewData {
   revenueCents: number;
   feed: ({ kind: 'question'; q: Question } | { kind: 'order'; o: Order })[];
   publicUrl: string;
+  channel3: { listed: boolean; own: boolean; website: string | null; partnerReady: boolean; connections: C3Connection[]; error?: string };
 }
 
 export function overviewPage(c: AppChrome, d: OverviewData): string {
@@ -158,8 +159,37 @@ export function overviewPage(c: AppChrome, d: OverviewData): string {
 <div class="agentbox"><div class="mono">Your store's agent endpoint</div><p style="margin:6px 0 10px">Any MCP client can now ask your store questions and buy from it. Paste this into Claude (Settings → Connectors → Add custom connector) or ChatGPT (developer mode → Add app):</p>
 <div class="row"><code id="mcpUrl">${esc(mcp)}</code><button class="btn sm" onclick="navigator.clipboard.writeText(document.getElementById('mcpUrl').textContent);this.textContent='Copied'">Copy</button></div>
 <p class="small" style="margin:12px 0 0;color:#b9b6b2">Then try: "Find me something from ${esc(s.name)} for oily skin under $30, check it won't clog pores, and buy it." People can shop the same catalog at <a href="/s/${esc(s.slug)}" target="_blank">${esc(d.publicUrl.replace(/^https?:\/\//, ''))}/s/${esc(s.slug)}</a>${s.listed ? ', and it is listed in the public directory.' : '.'}</p></div>
+${channel3Card(c, d)}
 <div class="card"><div class="cardhead"><h2>What shoppers and agents did</h2><a class="small" href="/app/questions">All questions →</a></div>${feed}</div>`,
   );
+}
+
+const PLATFORM_NAMES: Record<string, string> = { openai: 'ChatGPT (OpenAI)', google: 'Google', microsoft: 'Microsoft Copilot', perplexity: 'Perplexity', paypal: 'PayPal', channel3: 'Channel3 network', web_crawl: 'Web crawl', shopify: 'Shopify', woocommerce: 'WooCommerce', bigcommerce: 'BigCommerce', magento: 'Magento', ucp: 'UCP', stripe: 'Stripe' };
+
+function channel3Card(c: AppChrome, d: OverviewData): string {
+  const k = d.channel3;
+  const head = `<div class="cardhead"><h2>Get found by every AI shopping app</h2>${k.listed ? chip('listed') : chip('not listed')}</div>`;
+  if (!k.listed) {
+    return `<form class="card" method="post" action="/app/channel3/list">${head}
+<p class="small muted" style="margin-top:0">List your products in <b>Channel3</b>'s product graph. It powers hundreds of AI shopping apps and agents, and syncs catalogs to ChatGPT, Google, Copilot, Perplexity and PayPal. Every listing links back to your Open Shelf store, where checkout is PayPal.</p>
+<div class="row"><input class="f" name="website" placeholder="Your own website, if you have one (optional)" style="flex:1;min-width:220px"><button class="btn dark">List on Channel3</button></div>
+${c.isDemoUser ? '<p class="small muted" style="margin:10px 0 0">Demo stores stay private. Log in with PayPal to list a real store.</p>' : ''}</form>`;
+  }
+  const rows = k.connections
+    .filter((x) => x.category === 'distribution' || x.platform === 'web_crawl')
+    .map((x) => {
+      const sync = x.sync ? `${x.sync.state}${x.sync.total_products != null ? ` · ${x.sync.synced_products ?? 0}/${x.sync.total_products} products` : ''}` : '';
+      const canConnect = k.own && x.status !== 'active' && (DISTRIBUTION as readonly string[]).includes(x.platform);
+      return `<tr><td>${esc(PLATFORM_NAMES[x.platform] ?? x.display_name)}</td><td>${chip(x.status === 'active' ? 'connected' : x.status === 'action_required' ? 'waiting' : 'not connected')}</td><td class="small muted">${esc(sync)}</td><td class="r">${canConnect ? `<form method="post" action="/app/channel3/connect"><input type="hidden" name="platform" value="${esc(x.platform)}"><button class="btn sm">Connect</button></form>` : ''}</td></tr>`;
+    })
+    .join('');
+  const via = k.own
+    ? `Channel3 crawls <b>${esc(k.website)}</b> and distributes your catalog. Switch on each AI surface below; Channel3's hosted page handles the sign-in.`
+    : `Listed through the Open Shelf marketplace: Channel3 reads your products from the Open Shelf sitemap. Add your own website to manage ChatGPT, Google and PayPal distribution yourself.`;
+  return `<div class="card">${head}<p class="small muted" style="margin-top:0">${via}</p>
+${!k.partnerReady ? '<div class="note small">Channel3 partner access is not configured on this deployment yet, so this shows your Open Shelf listing only.</div>' : ''}${k.error ? `<div class="note err small">${esc(k.error)}</div>` : ''}
+${rows ? `<table><thead><tr><th>Where</th><th>Status</th><th>Sync</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+<div class="row" style="margin-top:12px">${k.own ? `<form method="post" action="/app/channel3/connect"><button class="btn dark sm">Connect a platform</button></form>` : `<form method="post" action="/app/channel3/list" class="row"><input class="f sm" name="website" placeholder="yourshop.com" style="width:200px"><button class="btn sm">Use my website</button></form>`}<a class="small" href="${esc(d.publicUrl)}/sitemap.xml" target="_blank">sitemap.xml</a><form method="post" action="/app/channel3/unlist" class="right"><button class="btn sm danger">Unlist</button></form></div></div>`;
 }
 
 export function productsPage(c: AppChrome, products: Product[]): string {
@@ -168,7 +198,7 @@ export function productsPage(c: AppChrome, products: Product[]): string {
         .map(
           (p) => `<tr><td style="width:56px"><div class="prod" style="width:48px;border-radius:10px"><div class="img"${tint(p).replace('style="', 'style="font-size:18px;')}>${thumb(p)}</div></div></td>
 <td><a href="/app/products/${esc(p.id)}"><b>${esc(p.name)}</b></a><div class="small muted">${esc(p.description.slice(0, 110))}${p.description.length > 110 ? '…' : ''}</div></td>
-<td class="r num">${esc(fmt(p.priceCents, c.shop.currency))}</td><td class="r small num">${p.market ? `${esc(priceRange(p.market, c.shop.currency))}<div class="muted">${p.market.retailers} stores</div>` : `<a class="small" href="/app/products/${esc(p.id)}/match">find</a>`}</td><td class="small">${esc(variantText(p.variants, c.shop.currency).replace(/\n/g, '; ')) || '<span class="muted">none</span>'}</td>
+<td class="r num">${esc(fmt(p.priceCents, c.shop.currency))}</td><td class="r small num">${p.market ? `${esc(priceRange(p.market, c.shop.currency))}<div class="muted">${p.market.retailers} stores</div>` : `<a class="small" href="/app/products/${esc(p.id)}/match">check</a>`}</td><td class="small">${esc(variantText(p.variants, c.shop.currency).replace(/\n/g, '; ')) || '<span class="muted">none</span>'}</td>
 <td class="r num">${p.stock === null ? '<span class="muted">∞</span>' : p.stock === 0 ? chip('sold out') : p.stock}</td>
 <td>${p.active ? '' : chip('inactive')} ${chip(p.source.replace('_', ' '))} ${p.needsShipping ? '' : chip('service')} ${p.paypalLinkUrl ? `<a class="small" href="${esc(p.paypalLinkUrl)}" target="_blank">PayPal link ↗</a>` : ''}</td></tr>`,
         )
@@ -183,7 +213,6 @@ export function productsPage(c: AppChrome, products: Product[]): string {
 <form class="step" method="post" action="/app/import/invoices" onsubmit="busy(this)"><div class="k">from PayPal</div><h3 style="margin:6px 0">Your invoices</h3><p class="small muted">Sell services? Claude turns what you've invoiced into offerings agents can book and pay for.</p><button class="btn dark sm">Import from invoices</button></form>
 <form class="step" method="post" action="/app/import/url" onsubmit="busy(this)"><div class="k">from a website</div><h3 style="margin:6px 0">Shopify or any shop page</h3><input class="f sm" name="url" type="url" required placeholder="https://yourshop.com"><button class="btn dark sm" style="margin-top:8px">Import</button></form>
 <form class="step" method="post" action="/app/import/text" onsubmit="busy(this)"><div class="k">from text</div><h3 style="margin:6px 0">Paste a price list or CSV</h3><textarea class="f" name="text" required placeholder="Lavender soap bar, $8, 100 g&#10;Gift box of 3 soaps, $21" style="min-height:64px;font-size:14px"></textarea><button class="btn dark sm" style="margin-top:8px">Read it with AI</button></form></div>
-<form class="card c3band" method="get" action="/app/catalog"><div><div class="mono">Channel3 product graph · 100M+ products</div><h3 style="margin:4px 0 2px">Sell brand-name products? Add them in one click.</h3><p class="small muted" style="margin:0">Search the catalog; photos, descriptions, key features and what other retailers charge come with it. You set your price.</p></div><div class="row" style="flex:1;min-width:260px"><input class="f" name="q" required placeholder="e.g. Clinique oil-free gel moisturizer" style="flex:1"><button class="btn dark">Search</button></div></form>
 <div class="card"><div class="cardhead"><h2>On the shelf (${products.length})</h2>${products.some((p) => !p.paypalLinkId) ? `<form method="post" action="/app/publish" onsubmit="busy(this)"><button class="btn sm" title="Creates a PayPal payment link for each product that doesn't have one, so you can also share them anywhere">Create PayPal links for the rest</button></form>` : ''}</div>
 <div style="overflow-x:auto"><table><thead><tr><th></th><th>Product</th><th class="r">Price</th><th class="r">Elsewhere</th><th>Options</th><th class="r">Stock</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table></div></div>`,
     `function busy(f){var b=f.querySelector('button');b.disabled=true;b.textContent='Working…'}`,
@@ -203,7 +232,7 @@ export function productEditPage(c: AppChrome, p: Product | null): string {
 <div class="fld"><label class="f">Options, one per line: Name: choice | choice=price</label><textarea class="f" name="variants" placeholder="Size: 50 ml=24.00 | 100 ml=38.00&#10;Scent: Unscented | Lavender" style="min-height:70px;font-family:ui-monospace,Menlo,monospace;font-size:13.5px">${esc(p ? variantText(p.variants) : '')}</textarea></div>
 <div class="fld"><label class="row small"><input type="checkbox" name="active" ${!p || p.active ? 'checked' : ''}> On the shelf (agents and shoppers can see and buy it)</label></div>
 <div class="fld" style="margin-top:8px"><label class="row small"><input type="checkbox" name="ships" ${!p || p.needsShipping ? 'checked' : ''}> Ships to the buyer (untick for services and digital products: no address is asked)</label></div>
-${p ? `<div class="note small" style="border-left-color:var(--lime)">${p.channel3Id ? `Matched on Channel3. Elsewhere: <b>${esc(priceRange(p.market, c.shop.currency))}</b>${p.market ? ` at ${p.market.retailers} ${p.market.retailers === 1 ? 'store' : 'stores'}` : ''}. <a href="/app/products/${esc(p.id)}/match">Change match</a>` : `No photo or details yet? <a href="/app/products/${esc(p.id)}/match">Find this product on Channel3</a> to fill them in and see what other stores charge.`}</div>` : ''}
+${p ? `<div class="note small" style="border-left-color:var(--lime)">${p.channel3Id ? `Matched on Channel3. Elsewhere: <b>${esc(priceRange(p.market, c.shop.currency))}</b>${p.market ? ` at ${p.market.retailers} ${p.market.retailers === 1 ? 'store' : 'stores'}` : ''}. <a href="/app/products/${esc(p.id)}/match">Change match</a>` : `Brand-name product? <a href="/app/products/${esc(p.id)}/match">Price-check it on Channel3</a> to see what other stores charge.`}</div>` : ''}
 <div class="row" style="margin-top:18px"><button class="btn dark">Save</button>${p ? `<button class="btn danger" formaction="/app/products/${esc(p.id)}/delete" onclick="return confirm('Delete ${esc(p.name).replace(/'/g, '')}?')">Delete</button>` : ''}${p?.paypalLinkUrl ? `<a class="small right" href="${esc(p.paypalLinkUrl)}" target="_blank">PayPal payment link ↗</a>` : ''}</div></form>`,
   );
 }
@@ -266,7 +295,7 @@ export function settingsPage(c: AppChrome, v: { publicUrl: string; webhook: bool
 <div class="fld"><label class="f">Tagline: what you sell, in one line</label><input class="f" name="tagline" value="${esc(s.tagline)}"></div>
 <div class="fld"><label class="f">About your store: policies, shipping, materials, who your products suit. The agent quotes this; anything you leave out it says it doesn't know.</label><textarea class="f" name="about" style="min-height:160px">${esc(s.about)}</textarea></div>
 <div class="grid2"><div class="fld"><label class="f">Refund window (days, automatic for shoppers' agents)</label><input class="f" name="refund_days" inputmode="numeric" value="${s.refundDays}"></div><div class="fld"><label class="f">Currency</label><input class="f" name="currency" maxlength="3" value="${esc(s.currency)}"></div></div>
-<div class="fld"><label class="row small"><input type="checkbox" name="listed" ${s.listed ? 'checked' : ''}> List my store in the public Open Shelf directory (${esc(v.publicUrl)}/mcp)</label></div>
+<div class="fld"><label class="row small"><input type="checkbox" name="listed" ${s.listed ? 'checked' : ''}> List my store publicly: the Open Shelf directory (${esc(v.publicUrl)}/mcp), the sitemap, and Channel3 (manage it on Overview)</label></div>
 <button class="btn dark" style="margin-top:16px">Save</button></form>
 <form class="card" method="post" action="/app/payee"><div class="cardhead"><h2>Get paid</h2>${v.mode === 'payee' ? chip('receiving payments') : v.mode === 'app' ? chip('via your PayPal app') : s.demo ? chip('demo sandbox') : chip('not connected')}</div>
 <p class="small muted" style="margin-top:0">${
@@ -329,27 +358,15 @@ function c3Card(r: C3Product, currency: string, action: string, hidden: Record<s
 <div class="body"><span class="small muted">${esc(brandOf(r))}</span><h3 style="font-size:15px">${esc(r.title)}</h3><span class="small">${m ? `${esc(priceRange(m, currency))} at ${m.retailers} ${m.retailers === 1 ? 'store' : 'stores'}` : 'No live offers'}</span><button class="btn dark sm" style="margin-top:auto">${label}</button></div></form>`;
 }
 
-export function catalogPage(c: AppChrome, q: string, results: C3Product[], error?: string): string {
-  return appPage(
-    'Add from Channel3',
-    c,
-    `<div class="head rise"><div><a class="small muted" href="/app/products">← Products</a><h1>Add from Channel3</h1><p class="sub">Search 100M+ products from thousands of retailers. Adding one brings its photo, description, key features and market price; you set your own price.</p></div></div>
-<form class="card row" method="get" action="/app/catalog"><input class="f" name="q" value="${esc(q)}" required placeholder="What do you sell?" style="flex:1;min-width:220px"><button class="btn dark">Search</button></form>
-${error ? `<div class="note err">${esc(error)}</div>` : ''}
-${q && !results.length && !error ? '<p class="empty">Nothing found. Try the brand and product name.</p>' : ''}
-<div class="grid">${results.map((r) => c3Card(r, c.shop.currency, '/app/catalog/add', { id: r.id }, 'Add to my shelf')).join('')}</div>`,
-  );
-}
-
 export function matchPage(c: AppChrome, p: Product, results: C3Product[], error?: string): string {
   return appPage(
     `Match ${p.name}`,
     c,
-    `<div class="head rise"><div><a class="small muted" href="/app/products/${esc(p.id)}">← ${esc(p.name)}</a><h1>Find it on Channel3</h1><p class="sub">Pick the same product to use its photo and details and to track what other stores charge. Your price, options and stock stay as they are.</p></div></div>
+    `<div class="head rise"><div><a class="small muted" href="/app/products/${esc(p.id)}">← ${esc(p.name)}</a><h1>Price check</h1><p class="sub">Selling a brand-name product? Pick the same item in Channel3's product graph and Open Shelf will show what other stores charge, to you and to shoppers. Nothing else about your product changes.</p></div></div>
 <form class="card row" method="get" action="/app/products/${esc(p.id)}/match"><input class="f" name="q" value="${esc(p.name)}" style="flex:1;min-width:220px"><button class="btn">Search again</button></form>
 ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 ${!results.length && !error ? '<p class="empty">No close matches. Handmade or own-brand products will not be in the catalog, which is fine.</p>' : ''}
-<div class="grid">${results.map((r) => c3Card(r, c.shop.currency, `/app/products/${p.id}/match`, { id: r.id }, 'This is it')).join('')}</div>`,
+<div class="grid">${results.map((r) => c3Card(r, c.shop.currency, `/app/products/${p.id}/match`, { id: r.id }, 'Same product')).join('')}</div>`,
   );
 }
 

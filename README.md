@@ -58,13 +58,14 @@ Paying is idempotent: the return page, the webhook and `order_status` all comple
 
 ## How it uses Channel3
 
-[Channel3](https://trychannel3.com)'s product graph (100M+ products across retailers) fills the gaps a small merchant's catalog has:
+Open Shelf is an on-ramp **into** [Channel3](https://trychannel3.com)'s product graph for small PayPal merchants, through Channel3's [Partner Program](https://partner.docs.trychannel3.com):
 
-- **Add from Channel3.** Resellers search the graph and add what they stock. The photo, description, key features and materials come with it, and the merchant sets their own price.
-- **Find this product.** Payment links carry no photos. Matching a product fills in its photo and details; the merchant's own words and photos always win.
-- **Market price.** Matched products track what other retailers charge (in-stock offers, the shop's currency). Merchants see it next to their price, shoppers see "Below retail" on the store page, and the store agent and the MCP tools tell shoppers' agents how the price compares.
+- **List on Channel3** (Overview). A merchant with their own website is provisioned as a Channel3 merchant (`POST /v0/partner/merchants`), and Channel3 starts crawling and normalizing their catalog. Stores that live only on Open Shelf are listed through Open Shelf itself, registered once as a marketplace merchant whose sitemap covers every listed store.
+- **Distribute everywhere.** From the same card the merchant opens Channel3's hosted connect page (`…/connections/sessions`) to switch on ChatGPT, Google, Microsoft Copilot, Perplexity and PayPal. Live status and synced product counts come from `…/connections`.
+- **Crawlable by design.** Every product has its own page (`/s/<store>/p/<id>`) with schema.org `Product` + `Offer` data (price, currency, stock, options, return window, an image URL even for products without a photo). There is also `/sitemap.xml` and `robots.txt`. Every listing's offer URL is the Open Shelf product page, so the buyer checks out with PayPal.
+- **Price check (developer API).** For brand-name products, the merchant can match the item in Channel3's catalog to see what other stores charge (`/v1/search`, `/v1/products/{id}`). Nothing is copied from other retailers.
 
-It uses the REST API (`/v1/search`, `/v1/products/{id}`) with `CHANNEL3_API_KEY`, and falls back to Channel3's free MCP tier without one.
+Keys: `CHANNEL3_PARTNER_KEY` (Partner Program) and `CHANNEL3_API_KEY` (developer API; Channel3's free MCP tier is used without it). The partner redirect URI to allowlist is `<PUBLIC_URL>/app/channel3/return`.
 
 ## How it uses AI
 

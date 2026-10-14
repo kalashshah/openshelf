@@ -26,6 +26,8 @@ export interface Shop {
   paypalSecretIv: string | null;
   paypalWebhookId: string | null;
   paypalPayeeEmail: string | null;
+  website: string | null;
+  channel3CustomerId: string | null;
   createdAt: number;
 }
 
@@ -127,6 +129,8 @@ function shopFrom(r: Row): Shop {
     paypalSecretIv: s(r.paypal_secret_iv),
     paypalWebhookId: s(r.paypal_webhook_id),
     paypalPayeeEmail: s(r.paypal_payee_email),
+    website: s(r.website),
+    channel3CustomerId: s(r.channel3_customer_id),
     createdAt: Number(r.created_at),
   };
 }
@@ -320,6 +324,21 @@ export class Store {
   /** The PayPal account whose own data (payment links, invoices) can be read: never the platform app on a payee shop's behalf. */
   async ownPayPalFor(shop: Shop): Promise<PayPal | null> {
     return this.paymentMode(shop) === 'payee' ? null : this.paypalFor(shop);
+  }
+
+  async setChannel3(shop: Shop, patch: { website?: string | null; customerId?: string | null; listed?: boolean }): Promise<void> {
+    await this.db
+      .prepare('UPDATE shops SET website = ?, channel3_customer_id = ?, listed = ? WHERE id = ?')
+      .bind(patch.website === undefined ? shop.website : patch.website, patch.customerId === undefined ? shop.channel3CustomerId : patch.customerId, (patch.listed ?? shop.listed) ? 1 : 0, shop.id)
+      .run();
+  }
+
+  async kvGet(key: string): Promise<string | null> {
+    return (await this.db.prepare('SELECT value FROM kv WHERE key = ?').bind(key).first<{ value: string }>())?.value ?? null;
+  }
+
+  async kvSet(key: string, value: string): Promise<void> {
+    await this.db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, value).run();
   }
 
   async setPayee(shop: Shop, email: string | null): Promise<void> {

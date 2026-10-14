@@ -3,8 +3,8 @@ import { pageDigest } from '../src/agent';
 import { parseVariantText, variantText } from '../src/pages';
 import { orderTotalCents, toOrder, toPayLink } from '../src/paypal';
 import { priceFor, rank, refundPolicy, UserError } from '../src/store';
-import { kindOf } from '../src/storefront';
-import { describe as describeC3, mainImage, marketOf } from '../src/channel3';
+import { kindOf, productJsonLd } from '../src/storefront';
+import { domainOf, mainImage, marketOf } from '../src/channel3';
 
 const moisturizer = {
   name: 'Gel Moisturizer',
@@ -130,6 +130,19 @@ describe('Channel3 helpers', () => {
   it('prices the market from in-stock offers in the shop currency, and picks the clean main image', () => {
     expect(marketOf(p)).toEqual({ minCents: 3950, maxCents: 4200, retailers: 2 });
     expect(mainImage(p)).toBe('https://x/b-clean.png');
-    expect(describeC3(p)).toBe('Lightweight gel.\n\nKey features: Oil-free; Non-acnegenic.\n\nBrand: Clinique.');
+  });
+});
+
+describe('Channel3 listing', () => {
+  it('reads a merchant domain from whatever they type', () => {
+    expect([domainOf('https://www.DewDrop.com/shop'), domainOf('dewdrop.com'), domainOf('not a url')]).toEqual(['dewdrop.com', 'dewdrop.com', null]);
+  });
+  it('describes a product as schema.org Product with a PayPal-checkout offer page', () => {
+    const shop = { slug: 'dew', name: 'Dewdrop', currency: 'USD', refundDays: 30 } as Parameters<typeof productJsonLd>[1];
+    const p = { id: 'p1', name: 'Gel', description: 'd', priceCents: 2400, imageUrl: null, stock: 3, variants: [{ name: 'Size', options: [{ label: '50 ml', price_cents: 2400 }, { label: '100 ml', price_cents: 3800 }] }] } as unknown as Parameters<typeof productJsonLd>[2];
+    const ld = productJsonLd('https://x.dev', shop, p) as { offers: Record<string, unknown>; image: string[]; hasMerchantReturnPolicy: { merchantReturnDays: number } };
+    expect(ld.offers).toMatchObject({ '@type': 'AggregateOffer', lowPrice: '24.00', highPrice: '38.00', url: 'https://x.dev/s/dew/p/p1', availability: 'https://schema.org/InStock' });
+    expect(ld.image).toEqual(['https://x.dev/s/dew/p/p1/image.svg']);
+    expect(ld.hasMerchantReturnPolicy.merchantReturnDays).toBe(30);
   });
 });

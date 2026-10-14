@@ -87,12 +87,61 @@ export function marketOf(p: C3Product, currency = 'USD'): Market | null {
   return { minCents: Math.min(...prices), maxCents: Math.max(...prices), retailers: new Set(live.map((o) => o.domain)).size };
 }
 
-/** A product description in the merchant's voice, built only from Channel3's facts. */
-export function describe(p: C3Product): string {
-  const parts = [p.description?.trim()];
-  if (p.key_features?.length) parts.push(`Key features: ${p.key_features.join('; ')}.`);
-  if (p.materials?.length) parts.push(`Materials: ${p.materials.join(', ')}.`);
-  const brand = brandOf(p);
-  if (brand && !(p.description ?? '').includes(brand)) parts.push(`Brand: ${brand}.`);
-  return parts.filter(Boolean).join('\n\n').slice(0, 3000);
+// ---- Partner Program: putting merchants' catalogs INTO Channel3 ------------------------------------
+// Open Shelf provisions each merchant (by storefront domain); Channel3 crawls the storefront, normalizes the catalog,
+// and distributes it to the AI shopping surfaces it powers, plus Google, OpenAI, Microsoft, Perplexity and PayPal
+// once the merchant connects them on Channel3's hosted page.
+
+const PARTNER = 'https://partners.trychannel3.com/v0/partner';
+
+export interface C3Connection {
+  platform: string;
+  category: 'distribution' | 'ingestion';
+  status: 'not_connected' | 'action_required' | 'active';
+  display_name: string;
+  sync?: { state: 'pending' | 'syncing' | 'live'; last_synced_at?: string | null; total_products?: number | null; synced_products?: number | null } | null;
+}
+
+/** Where a merchant can switch distribution on from Channel3's hosted page. */
+export const DISTRIBUTION = ['openai', 'google', 'microsoft', 'perplexity', 'paypal'] as const;
+
+function partnerKey(env: Env): string {
+  const key = env.CHANNEL3_PARTNER_KEY;
+  if (!key) throw new Error('Channel3 partner access is not set up on this deployment yet (CHANNEL3_PARTNER_KEY).');
+  return key;
+}
+
+async function partner<T>(env: Env, method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${PARTNER}${path}`, {
+    method,
+    headers: { 'x-api-key': partnerKey(env), 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Channel3 ${method} ${path} failed (${res.status}): ${text.slice(0, 200)}`);
+  return JSON.parse(text) as T;
+}
+
+/** Idempotent on domain. A new merchant already has an active web_crawl connection: Channel3 starts crawling at once. */
+export function createMerchant(env: Env, domain: string, name: string): Promise<{ customer_id: string; created: boolean }> {
+  return partner(env, 'POST', '/merchants', { domain, name });
+}
+
+export async function connections(env: Env, customerId: string): Promise<C3Connection[]> {
+  return (await partner<{ connections: C3Connection[] }>(env, 'GET', `/merchants/${encodeURIComponent(customerId)}/connections`)).connections;
+}
+
+/** A single-use, 30-minute link to Channel3's hosted page where the merchant connects a platform. */
+export function connectSession(env: Env, customerId: string, redirectUri: string, platform?: string): Promise<{ url: string; expires_at: string }> {
+  return partner(env, 'POST', `/merchants/${encodeURIComponent(customerId)}/connections/sessions`, { redirect_uri: redirectUri, ...(platform ? { platform } : {}) });
+}
+
+/** "https://www.Shop.com/path" → "shop.com". */
+export function domainOf(url: string): string | null {
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./, '').toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }

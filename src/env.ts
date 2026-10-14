@@ -16,6 +16,8 @@ export interface Env {
 
   /** Channel3 product graph (photos, details, market prices). Absent: Channel3's free MCP tier is used. */
   CHANNEL3_API_KEY?: string;
+  /** Channel3 Partner Program key: lists merchants' catalogs in Channel3. Absent: the Channel3 card explains it is not set up. */
+  CHANNEL3_PARTNER_KEY?: string;
 
   /** Backs the store agent and the AI product import. */
   ANTHROPIC_API_KEY: string;

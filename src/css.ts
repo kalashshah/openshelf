@@ -73,7 +73,6 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;ba
 /* motion */
 .rise{animation:rise var(--duration-very-slow) var(--ease-smooth-out) both;animation-delay:var(--d,0s)}@keyframes rise{from{opacity:0;transform:translateY(10px);filter:blur(3px)}to{opacity:1;transform:none;filter:blur(0)}}
 /* shop pieces */
-.c3band{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:linear-gradient(120deg,#fff,#F6FBE3);border-color:#E3EFC0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin:14px 0}
 .prod{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;scroll-margin-top:20px}
 .prod:target{box-shadow:0 0 0 3px var(--lime)}

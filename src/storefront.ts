@@ -120,6 +120,9 @@ body{background:var(--sf-bg)}
 .body h3{font-size:17.5px;letter-spacing:-.02em;font-weight:600;margin:0;line-height:1.25}
 .price{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .deal{align-self:flex-start;white-space:nowrap;font-size:12.5px;font-weight:500;color:#1E6B3A;background:#E7F5EC;border-radius:999px;padding:3px 10px}
+.pdp{margin-top:14px}.pdp .pc{display:grid;grid-template-columns:1.1fr 1fr}.pdp .media{aspect-ratio:auto;min-height:360px}.pdp .body{padding:28px}.pdp h3{font-size:30px;letter-spacing:-.03em}.pdp .price{font-size:26px}
+@media(max-width:760px){.pdp .pc{grid-template-columns:1fr}.pdp .media{min-height:0;aspect-ratio:4/3}.pdp .body{padding:18px}.pdp h3{font-size:24px}}
+.desc.full{display:block;-webkit-line-clamp:unset;white-space:pre-line}
 .desc{font-size:14px;color:var(--ink2);margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .opts{display:flex;flex-direction:column;gap:6px}.opts .on{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -161,6 +164,52 @@ export interface StorefrontView {
   canBuy: boolean;
   demo: boolean;
   error?: string;
+  /** Set on a product's own page (/s/:slug/p/:id): shown large first, with its own title and schema.org data. */
+  focus?: Product;
+}
+
+export function productUrl(publicUrl: string, shop: Shop, p: Product): string {
+  return `${publicUrl}/s/${shop.slug}/p/${p.id}`;
+}
+
+export function productImageUrl(publicUrl: string, shop: Shop, p: Product): string {
+  return p.imageUrl ?? `${productUrl(publicUrl, shop, p)}/image.svg`;
+}
+
+/**
+ * schema.org Product + Offer: what Channel3's crawler (and Google's, OpenAI's…) reads to list the product.
+ * The offer URL is the product page, where checkout is PayPal.
+ */
+export function productJsonLd(publicUrl: string, shop: Shop, p: Product): Record<string, unknown> {
+  const prices = [p.priceCents, ...p.variants.flatMap((v) => v.options.flatMap((o) => (o.price_cents !== undefined ? [o.price_cents] : [])))];
+  const lo = Math.min(...prices);
+  const hi = Math.max(...prices);
+  const url = productUrl(publicUrl, shop, p);
+  const availability = `https://schema.org/${p.stock === 0 ? 'OutOfStock' : 'InStock'}`;
+  const seller = { '@type': 'Organization', name: shop.name, url: `${publicUrl}/s/${shop.slug}` };
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    '@id': url,
+    name: p.name,
+    description: p.description,
+    sku: p.id,
+    url,
+    image: [productImageUrl(publicUrl, shop, p)],
+    brand: { '@type': 'Brand', name: shop.name },
+    ...(p.variants.length ? { additionalProperty: p.variants.map((v) => ({ '@type': 'PropertyValue', name: v.name, value: v.options.map((o) => o.label).join(', ') })) } : {}),
+    offers:
+      lo === hi
+        ? { '@type': 'Offer', url, price: (lo / 100).toFixed(2), priceCurrency: shop.currency, availability, seller, itemCondition: 'https://schema.org/NewCondition' }
+        : { '@type': 'AggregateOffer', url, lowPrice: (lo / 100).toFixed(2), highPrice: (hi / 100).toFixed(2), priceCurrency: shop.currency, offerCount: prices.length - 1, availability, seller },
+    ...(shop.refundDays > 0
+      ? { hasMerchantReturnPolicy: { '@type': 'MerchantReturnPolicy', returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow', merchantReturnDays: shop.refundDays } }
+      : {}),
+  };
+}
+
+function ldScript(data: unknown): string {
+  return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
 export function storefrontPage(shop: Shop, products: Product[], v: StorefrontView): string {
@@ -205,15 +254,27 @@ export function storefrontPage(shop: Shop, products: Product[], v: StorefrontVie
           : '';
     return `<article class="pc" id="${esc(p.id)}"><div class="media">${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" loading="lazy">` : productArt(p, initial)}${flag}</div>
 <form class="body" method="post" action="/s/${esc(shop.slug)}/buy" data-base="${p.priceCents}"><input type="hidden" name="product_id" value="${esc(p.id)}">
-<div><h3>${esc(p.name)}</h3><div class="top"><div class="price" data-price-out>${esc(fmt(shown, shop.currency))}</div><span class="qty"><button type="button" aria-label="Fewer" onclick="step(this,-1)">−</button><input name="quantity" type="number" min="1" max="99" value="1" aria-label="Quantity"><button type="button" aria-label="More" onclick="step(this,1)">+</button></span></div></div>
+<div><h3><a href="/s/${esc(shop.slug)}/p/${esc(p.id)}" style="text-decoration:none">${esc(p.name)}</a></h3><div class="top"><div class="price" data-price-out>${esc(fmt(shown, shop.currency))}</div><span class="qty"><button type="button" aria-label="Fewer" onclick="step(this,-1)">−</button><input name="quantity" type="number" min="1" max="99" value="1" aria-label="Quantity"><button type="button" aria-label="More" onclick="step(this,1)">+</button></span></div></div>
 ${p.market && p.market.minCents > shown ? `<span class="deal">Below retail · ${esc(fmt(p.market.minCents, shop.currency))}+ elsewhere</span>` : ''}<p class="desc">${esc(p.description)}</p>${opts}
 <div class="buy"><button class="ppbtn" ${soldOut || !v.canBuy ? 'disabled' : ''}>${soldOut ? 'Sold out' : `${PP} Buy with PayPal`}</button></div>
 <button type="button" class="askthis" onclick="askAbout(${esc(js(p.id))},${esc(js(p.name))})">Ask the shop about this →</button></form></article>`;
   };
 
-  const body = `<div class="sf" style="--accent:hsl(${h} 45% 40%);--accent-ink:hsl(${h} 50% 26%);--accent-soft:hsl(${h} 60% 94%);--accent-soft2:hsl(${(h + 35) % 360} 60% 93%)">
+  const focus = v.focus;
+  const ld = focus
+    ? ldScript(productJsonLd(v.publicUrl, shop, focus))
+    : ldScript({
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: shop.name,
+        itemListElement: products.map((p, i) => ({ '@type': 'ListItem', position: i + 1, url: productUrl(v.publicUrl, shop, p), name: p.name })),
+      });
+  const focusSection = focus
+    ? `<section class="sec"><a class="small" href="/s/${esc(shop.slug)}" style="color:var(--muted)">← All of ${esc(shop.name)}</a><div class="pdp">${card(focus).replace('class="desc"', 'class="desc full"')}</div></section>`
+    : '';
+  const body = `${ld}<div class="sf" style="--accent:hsl(${h} 45% 40%);--accent-ink:hsl(${h} 50% 26%);--accent-soft:hsl(${h} 60% 94%);--accent-soft2:hsl(${(h + 35) % 360} 60% 93%)">
 <header class="sf-top"><div class="sf-in"><span class="monog">${esc(initial)}</span><span class="nm">${esc(shop.name)}</span><nav><a href="#shop" class="hide-sm">Shop</a><a href="#ask">Ask the shop</a><a href="#agents" class="hide-sm">Shop with AI</a></nav></div></header>
-<section class="sf-hero"><div class="sf-in">
+${focus ? `<div class="sf-in">${focusSection}</div>` : ''}<section class="sf-hero"><div class="sf-in">
 <div><div class="eyebrow">Independent shop · ${products.length} ${products.length === 1 ? 'item' : 'items'}</div><h1>${esc(shop.name)}</h1><p class="tag">${esc(shop.tagline || 'Welcome to our shop.')}</p>
 <div class="badges">${badges.map(([i, t]) => `<span class="badge"><i>${i}</i>${esc(t)}</span>`).join('')}</div>
 <div class="cta"><a class="pill ink" href="#shop">Shop the collection</a><a class="pill" href="#ask" onclick="document.getElementById('q').focus()">Ask a question</a></div>
@@ -224,7 +285,7 @@ ${v.demo ? `<div class="sandbox">Sandbox demo, nothing real is charged. At PayPa
 <div class="sugg" id="sugg">${suggestions.map((s) => `<button type="button" onclick="send(${esc(js(s))})">${esc(s)}</button>`).join('')}</div>
 <form class="ask" onsubmit="ask(event)"><input id="q" placeholder="Ask about a product, sizing, shipping…" autocomplete="off" aria-label="Your question"><button id="askBtn">Ask</button></form></div>
 </div></section>
-<main class="sf-in"><section class="sec" id="shop"><div class="sec-h"><h2>The collection</h2><span>Paid securely with PayPal</span></div><div class="pgrid">${products.map(card).join('') || '<p class="muted">No products yet.</p>'}</div></section>
+<main class="sf-in"><section class="sec" id="shop"><div class="sec-h"><h2>${focus ? `More from ${esc(shop.name)}` : 'The collection'}</h2><span>Paid securely with PayPal</span></div><div class="pgrid">${products.filter((p) => p.id !== focus?.id).map(card).join('') || '<p class="muted">No products yet.</p>'}</div></section>
 <section class="agents" id="agents"><div style="position:relative;z-index:1"><div class="eyebrow" style="color:#b9b6b2">Shop with your AI agent</div><h2>Let your assistant do the shopping.</h2><p>${esc(shop.name)} is open to AI agents. Yours can ask the shop questions, compare options and place the order. You approve every payment in PayPal.</p>
 <ol><li><b>1</b>Add the shop to Claude, ChatGPT or any MCP client.</li><li><b>2</b>Ask it to find what you need here.</li><li><b>3</b>Approve the PayPal link it gives you. Done.</li></ol></div>
 <div class="endpoint"><div class="l">This shop's agent endpoint</div><code id="mcp">${esc(mcp)}</code><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('mcp').textContent);this.textContent='Copied ✓'">Copy link</button><div class="try">In Claude: Settings → Connectors → Add custom connector.</div></div></section>
@@ -244,5 +305,5 @@ post('/s/'+SLUG+'/ask',{question:text,product_id:FOCUS}).then(function(r){b.disa
 var h=e(r.j.answer);if(r.j.recommended&&r.j.recommended.length){h+='<div class="recs">'+r.j.recommended.map(function(p){return '<a href="#'+e(p.product_id)+'">'+e(p.name)+' · '+e(p.price)+'</a>'}).join('')+'</div>'}
 if(!r.j.answered)h+='<span class="fwd">I’ve passed this to the shop owner.</span>';w.innerHTML=h;document.getElementById('chat').scrollTop=1e6}).catch(function(){b.disabled=false;w.textContent='Could not reach the shop'})}`;
 
-  return layout(shop.name, body, { script, description: shop.tagline, bare: true, css: CSS });
+  return layout(focus ? `${focus.name} · ${shop.name}` : shop.name, body, { script, description: focus ? focus.description.slice(0, 160) : shop.tagline, bare: true, css: CSS });
 }

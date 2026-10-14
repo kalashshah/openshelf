@@ -1,11 +1,10 @@
 import { Hono, type Context } from 'hono';
-import { brandOf, describe, getProduct, mainImage, marketOf, searchProducts } from './channel3';
+import { connectSession, connections, createMerchant, DISTRIBUTION, domainOf, getProduct, marketOf, searchProducts, type C3Connection } from './channel3';
 import { askStore, extractProducts, productsFromUrl, shopContext, type DraftProduct } from './agent';
 import { getAuth, paypalLoginEnabled, sessionUser, type SessionUser } from './auth';
 import type { Env } from './env';
 import { INSTRUCTIONS, registerTools } from './mcp';
 import {
-  catalogPage,
   checkoutResultPage,
   matchPage,
   errorPage,
@@ -21,7 +20,7 @@ import {
   type AppChrome,
 } from './pages';
 import { toCents } from './paypal';
-import { storefrontPage } from './storefront';
+import { productArt, productUrl, storefrontPage } from './storefront';
 import { DEMO_SHOP, ensureShowcase, seedShop } from './seed';
 import { fmt, Store, UserError, type Shop } from './store';
 
@@ -81,6 +80,39 @@ app.get('/s/:slug', async (c) => {
   const [products, pp] = await Promise.all([store.products(shop.id), store.paypalFor(shop)]);
   return c.html(storefrontPage(shop, products, { publicUrl: c.env.PUBLIC_URL, canBuy: Boolean(pp), demo: shop.demo || shop.paypalEnv === 'sandbox', error: c.req.query('e') }));
 });
+
+app.get('/s/:slug/p/:id', async (c) => {
+  const store = new Store(c.env);
+  const shop = await store.shopBySlug(c.req.param('slug'));
+  const products = shop ? await store.products(shop.id) : [];
+  const focus = products.find((p) => p.id === c.req.param('id'));
+  if (!shop || !focus) return c.html(errorPage('That product is not on sale here.'), 404);
+  const pp = await store.paypalFor(shop);
+  return c.html(storefrontPage(shop, products, { publicUrl: c.env.PUBLIC_URL, canBuy: Boolean(pp), demo: shop.demo || shop.paypalEnv === 'sandbox', error: c.req.query('e'), focus }));
+});
+
+/** Products without a photo still need an image URL for crawlers: their illustrated packshot. */
+app.get('/s/:slug/p/:id/image.svg', async (c) => {
+  const store = new Store(c.env);
+  const shop = await store.shopBySlug(c.req.param('slug'));
+  const p = shop ? await store.product(c.req.param('id')) : null;
+  if (!shop || !p || p.shopId !== shop.id) return c.text('Not found', 404);
+  const svg = productArt(p, shop.name.trim().charAt(0).toUpperCase()).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" ');
+  return c.body(svg, 200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=3600' });
+});
+
+/** Every listed store and product, for Channel3's crawler and every other one. */
+app.get('/sitemap.xml', async (c) => {
+  const store = new Store(c.env);
+  const urls = [`${c.env.PUBLIC_URL}/`];
+  for (const shop of await store.listedShops()) {
+    urls.push(`${c.env.PUBLIC_URL}/s/${shop.slug}`);
+    for (const p of await store.products(shop.id)) urls.push(productUrl(c.env.PUBLIC_URL, shop, p));
+  }
+  return c.body(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map((u) => `<url><loc>${u}</loc></url>`).join('')}</urlset>`, 200, { 'content-type': 'application/xml' });
+});
+
+app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\nSitemap: ${c.env.PUBLIC_URL}/sitemap.xml\n`));
 
 app.post('/s/:slug/buy', async (c) => {
   const store = new Store(c.env);
@@ -223,8 +255,14 @@ app.get('/app', async (c) => {
   const feed = [...questions.slice(0, 15).map((q) => ({ kind: 'question' as const, q, at: q.createdAt })), ...orders.slice(0, 15).map((o) => ({ kind: 'order' as const, o, at: o.createdAt }))]
     .sort((a, b) => b.at - a.at)
     .slice(0, 15);
+  // Channel3 distribution status, when the shop is listed there.
+  let c3: { connections: C3Connection[]; error?: string } | null = null;
+  if (shop.channel3CustomerId && c.env.CHANNEL3_PARTNER_KEY) {
+    c3 = await connections(c.env, shop.channel3CustomerId).then((list) => ({ connections: list })).catch((e) => ({ connections: [], error: e instanceof Error ? e.message : String(e) }));
+  }
   return c.html(
     overviewPage(ch, {
+      channel3: { listed: shop.listed, own: Boolean(shop.website && shop.channel3CustomerId), website: shop.website, partnerReady: Boolean(c.env.CHANNEL3_PARTNER_KEY), ...(c3 ?? { connections: [] }) },
       products: products.length,
       questionsAsked: questions.length,
       agentOrders: paid.filter((o) => o.channel === 'agent').length,
@@ -353,40 +391,58 @@ app.post('/app/publish', async (c) => {
   return back(c, '/app/products', `Created ${made} PayPal payment links.`);
 });
 
-// ---- Channel3: fill the catalog from the product graph, and price-check against other retailers ----------
+// ---- Channel3 price check: what the same product sells for at other retailers (no copying of their photos or text) ----
 
-app.get('/app/catalog', async (c) => {
-  const q = (c.req.query('q') ?? '').trim();
-  if (!q) return c.html(catalogPage(await chrome(c, 'products'), '', []));
-  if (await overLimit(c, 'channel3')) return c.html(catalogPage(await chrome(c, 'products'), q, [], 'Too many searches at once; try again in a minute.'));
+// ---- Channel3 Partner Program: list the merchant's catalog IN Channel3, then out to every AI shopping surface ----
+
+/** Open Shelf itself as one Channel3 merchant: the marketplace whose sitemap lists every hosted store. */
+async function platformCustomer(env: Env, store: Store): Promise<string> {
+  const known = await store.kvGet('channel3_platform_customer');
+  if (known) return known;
+  const host = new URL(env.PUBLIC_URL).hostname;
+  const { customer_id } = await createMerchant(env, host, 'Open Shelf');
+  await store.kvSet('channel3_platform_customer', customer_id);
+  return customer_id;
+}
+
+app.post('/app/channel3/list', async (c) => {
+  const shop = c.get('shop');
+  const store = new Store(c.env);
+  if (c.get('user').isAnonymous) return back(c, '/app', undefined, 'Demo stores are not listed publicly. Log in with PayPal to list your own store on Channel3.');
+  const f = await c.req.parseBody();
+  const raw = String(f.website ?? '').trim();
+  const domain = raw ? domainOf(raw) : null;
+  if (raw && !domain) return back(c, '/app', undefined, 'That website address does not look right.');
+  // Listing in Open Shelf's directory and sitemap happens either way; Channel3 needs the partner key.
+  await store.setChannel3(shop, { listed: true, website: domain ?? shop.website });
   try {
-    return c.html(catalogPage(await chrome(c, 'products'), q, await searchProducts(c.env, q, 12)));
+    const customerId = domain ? (await createMerchant(c.env, domain, shop.name)).customer_id : await platformCustomer(c.env, store);
+    await store.setChannel3({ ...shop, listed: true, website: domain ?? shop.website }, { customerId });
+    return back(c, '/app', domain ? `Listed on Channel3. It is crawling ${domain} now; connect ChatGPT, Google and more below.` : 'Listed on Channel3 through the Open Shelf marketplace. Its crawler picks up your products from the Open Shelf sitemap.');
   } catch (e) {
-    return c.html(catalogPage(await chrome(c, 'products'), q, [], e instanceof Error ? e.message : String(e)));
+    return back(c, '/app', undefined, `Listed in the Open Shelf directory, but Channel3 said: ${e instanceof Error ? e.message : String(e)}`);
   }
 });
 
-app.post('/app/catalog/add', async (c) => {
-  const shop = c.get('shop');
-  const f = await c.req.parseBody();
-  const found = await getProduct(c.env, String(f.id ?? ''));
-  if (!found) return back(c, '/app/catalog', undefined, 'That product is no longer in the catalog.');
-  const market = marketOf(found, shop.currency);
-  const brand = brandOf(found);
-  const saved = await new Store(c.env).saveProduct(shop.id, {
-    // "Clinique Oil-Free Gel Moisturizer", not just "Oil-Free Gel Moisturizer": shoppers' agents search by brand.
-    name: brand && !found.title.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${found.title}` : found.title,
-    description: describe(found),
-    // Starts at the lowest price elsewhere; the merchant sets their own on the next screen.
-    priceCents: market?.minCents ?? 0,
-    imageUrl: mainImage(found),
-    source: 'channel3',
-    channel3Id: found.id,
-    market,
-    active: Boolean(market),
-  });
-  return back(c, `/app/products/${saved.id}`, market ? `Added. It sells for ${market.minCents === market.maxCents ? fmt(market.minCents, shop.currency) : `${fmt(market.minCents, shop.currency)}–${fmt(market.maxCents, shop.currency)}`} elsewhere; set your price and stock, then save.` : 'Added but hidden: no live price elsewhere, so set your price and tick "On the shelf".');
+app.post('/app/channel3/unlist', async (c) => {
+  await new Store(c.env).setChannel3(c.get('shop'), { listed: false });
+  return back(c, '/app', 'Unlisted: your store is out of the directory and the sitemap.');
 });
+
+app.post('/app/channel3/connect', async (c) => {
+  const shop = c.get('shop');
+  if (!shop.channel3CustomerId || !shop.website) return back(c, '/app', undefined, 'Add your own website to Channel3 first.');
+  const f = await c.req.parseBody();
+  const platform = String(f.platform ?? '');
+  try {
+    const s = await connectSession(c.env, shop.channel3CustomerId, `${c.env.PUBLIC_URL}/app/channel3/return`, (DISTRIBUTION as readonly string[]).includes(platform) ? platform : undefined);
+    return c.redirect(s.url, 303);
+  } catch (e) {
+    return back(c, '/app', undefined, e instanceof Error ? e.message : String(e));
+  }
+});
+
+app.get('/app/channel3/return', (c) => back(c, '/app', 'Back from Channel3. Connection status below is read live from Channel3.'));
 
 app.get('/app/products/:id/match', async (c) => {
   const p = await new Store(c.env).product(c.req.param('id'));
@@ -407,15 +463,8 @@ app.post('/app/products/:id/match', async (c) => {
   const f = await c.req.parseBody();
   const found = await getProduct(c.env, String(f.id ?? ''));
   if (!found) return back(c, `/app/products/${p.id}`, undefined, 'That product is no longer in the catalog.');
-  // The merchant's own words win: details only fill a thin description, the photo only a missing one.
-  await store.saveProduct(shop.id, {
-    ...p,
-    imageUrl: p.imageUrl || mainImage(found),
-    description: p.description.length >= 160 ? p.description : [p.description, describe(found)].filter(Boolean).join('\n\n'),
-    channel3Id: found.id,
-    market: marketOf(found, shop.currency),
-  });
-  return back(c, `/app/products/${p.id}`, 'Matched on Channel3: photo and details filled in, market price tracked.');
+  await store.saveProduct(shop.id, { ...p, channel3Id: found.id, market: marketOf(found, shop.currency) });
+  return back(c, `/app/products/${p.id}`, 'Price check on: you will see what other stores charge for it.');
 });
 
 app.get('/app/questions', async (c) => c.html(questionsPage(await chrome(c, 'questions'), await new Store(c.env).questions(c.get('shop').id, 300))));
