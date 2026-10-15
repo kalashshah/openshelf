@@ -14,7 +14,7 @@ export const metadata = { title: 'Sign in' };
 /** What a store looks like to a shopper's agent: the tile beside the form. */
 function WelcomeTile() {
   return (
-    <div className="relative flex aspect-[16/11] w-full flex-col justify-end overflow-hidden rounded-2xl bg-[#0b1220] p-5 shadow-regular-md ring-1 ring-line lg:aspect-[4/5]">
+    <div className="relative flex aspect-[16/11] w-full flex-col justify-end overflow-hidden rounded-2xl bg-gray-950 p-5 shadow-regular-md ring-1 ring-line lg:aspect-[4/5]">
       <div className="absolute inset-0 bg-[radial-gradient(600px_300px_at_80%_0%,rgba(0,156,222,.45),transparent_70%)]" />
       <div className="relative flex flex-col gap-3">
         <span className="self-start rounded-md bg-white/10 px-2.5 py-1 text-xs font-medium text-white backdrop-blur">Your store, as an agent sees it</span>
