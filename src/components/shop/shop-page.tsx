@@ -156,10 +156,10 @@ export function ShopPage({ shop, products, publicUrl, canBuy, demo, error, focus
         </section>
 
         <section id="agents" className="scroll-mt-20 px-4 pb-16 md:px-8 md:pb-20">
-          <div className="rounded-[28px] bg-gray-950 px-6 py-16 md:px-12">
+          <div className="rounded-[28px] bg-[#003087] px-6 py-16 md:px-12">
             <SectionHeader dark icon={Plug} eyebrow="Shop with your AI agent" title="Let your assistant do the shopping" sub={`${shop.name} is open to AI agents. Add the shop to Claude, ChatGPT or any MCP client.`} />
             <div className="mx-auto mt-10 flex max-w-xl items-center gap-3 rounded-xl bg-white/[0.06] p-3 pl-4 ring-1 ring-white/10">
-              <code className="min-w-0 flex-1 truncate font-mono text-sm text-[#c4b5fd]">{mcp}</code>
+              <code className="min-w-0 flex-1 truncate font-mono text-sm text-[#9fd0ff]">{mcp}</code>
               <CopyButton text={mcp} />
             </div>
             <div className="mx-auto mt-10 grid max-w-5xl gap-px overflow-hidden rounded-2xl bg-white/10 md:grid-cols-4">
@@ -169,10 +169,10 @@ export function ShopPage({ shop, products, publicUrl, canBuy, demo, error, focus
                 ['03', 'Buy', 'It places the order; you approve the PayPal link. Nothing is charged without you.'],
                 ['04', 'After', `Tracking, and refunds within ${shop.refundDays} days, through your assistant.`],
               ].map(([n, t, d]) => (
-                <div key={n} className="bg-gray-950 p-6">
-                  <span className="font-mono text-xs text-[#a897ff]">{n}</span>
+                <div key={n} className="bg-[#003087] p-6">
+                  <span className="font-mono text-xs text-[#6cb4ff]">{n}</span>
                   <p className="mt-3 text-[15px] font-semibold text-white">{t}</p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-gray-400">{d}</p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-blue-100/75">{d}</p>
                 </div>
               ))}
             </div>

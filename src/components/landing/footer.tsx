@@ -3,7 +3,7 @@ export function Footer({ title, sub, links, word, owner }: { title: string; sub:
   return (
     <footer className="overflow-hidden border-t border-line">
       <div className="flex flex-col items-center gap-5 px-6 pb-4 pt-14 text-center">
-        <p className="text-lg font-semibold tracking-[-0.02em] text-ink">
+        <p className="text-lg font-semibold tracking-[-0.02em] text-primary-darker">
           {title}
           <span className="block font-normal text-muted">{sub}</span>
         </p>

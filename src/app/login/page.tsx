@@ -14,13 +14,13 @@ export const metadata = { title: 'Sign in' };
 /** What a store looks like to a shopper's agent: the tile beside the form. */
 function WelcomeTile() {
   return (
-    <div className="relative flex aspect-[16/11] w-full flex-col justify-end overflow-hidden rounded-2xl bg-gray-950 p-5 shadow-regular-md ring-1 ring-line lg:aspect-[4/5]">
-      <div className="absolute inset-0 bg-[radial-gradient(600px_300px_at_80%_0%,rgba(125,82,244,.35),transparent_70%)]" />
+    <div className="relative flex aspect-[16/11] w-full flex-col justify-end overflow-hidden rounded-2xl bg-[#003087] p-5 shadow-regular-md ring-1 ring-line lg:aspect-[4/5]">
+      <div className="absolute inset-0 bg-[radial-gradient(600px_300px_at_80%_0%,rgba(0,156,222,.45),transparent_70%)]" />
       <div className="relative flex flex-col gap-3">
         <span className="self-start rounded-md bg-white/10 px-2.5 py-1 text-xs font-medium text-white backdrop-blur">Your store, as an agent sees it</span>
         <div className="self-end rounded-2xl rounded-br-md bg-white px-3.5 py-2.5 text-[13px] text-gray-950">Moisturizer for oily skin, under $30?</div>
         <div className="flex max-w-[85%] items-start gap-2 rounded-2xl rounded-bl-md bg-white/[0.08] px-3.5 py-2.5 text-[13px] text-gray-200 ring-1 ring-white/10">
-          <Bot className="mt-0.5 size-4 shrink-0 text-[#a897ff]" />
+          <Bot className="mt-0.5 size-4 shrink-0 text-[#6cb4ff]" />
           The Oil-Free Gel Moisturizer: non-comedogenic, no fragrance, $24.
         </div>
         <div className="flex items-center gap-3 rounded-xl bg-white/[0.06] p-3 ring-1 ring-white/10">

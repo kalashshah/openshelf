@@ -13,7 +13,7 @@ export function FrameHandles({ dark = false }: { dark?: boolean }) {
           <span
             key={pos}
             aria-hidden
-            className={cn('canvas-handle', pos, dark && 'border-gray-600 bg-gray-900')}
+            className={cn('canvas-handle', pos, dark && 'border-white/30 bg-[#001c64]')}
           />
         ),
       )}
@@ -49,7 +49,7 @@ export function EyebrowPill({
       className={cn(
         'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium shadow-regular-xs',
         dark
-          ? 'border-white/10 bg-white/[0.06] text-gray-300'
+          ? 'border-white/10 bg-white/[0.06] text-blue-100'
           : 'border-line bg-card text-muted',
       )}
     >
@@ -82,7 +82,7 @@ export function SectionHeader({
         {title}
       </Typography>
       {sub && (
-        <Typography variant="lead" className={cn('max-w-lg', dark && 'text-gray-400')}>
+        <Typography variant="lead" className={cn('max-w-lg', dark && 'text-blue-100/75')}>
           {sub}
         </Typography>
       )}

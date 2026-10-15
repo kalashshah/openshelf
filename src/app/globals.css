@@ -297,10 +297,10 @@
   --away-light: var(--yellow-200);
   --away-lighter: var(--yellow-50);
 
-  --feature-dark: var(--purple-950);
-  --feature-base: var(--purple-500);
-  --feature-light: var(--purple-200);
-  --feature-lighter: var(--purple-50);
+  --feature-dark: var(--blue-950);
+  --feature-base: var(--blue-500);
+  --feature-light: var(--blue-200);
+  --feature-lighter: var(--blue-50);
 
   --verified-dark: var(--sky-950);
   --verified-base: var(--sky-500);
@@ -378,10 +378,10 @@
   --away-light: var(--yellow-alpha-24);
   --away-lighter: var(--yellow-alpha-16);
 
-  --feature-dark: var(--purple-400);
-  --feature-base: var(--purple-500);
-  --feature-light: var(--purple-alpha-24);
-  --feature-lighter: var(--purple-alpha-16);
+  --feature-dark: var(--blue-400);
+  --feature-base: var(--blue-500);
+  --feature-light: var(--blue-alpha-24);
+  --feature-lighter: var(--blue-alpha-16);
 
   --verified-dark: var(--sky-400);
   --verified-base: var(--sky-600);
@@ -849,7 +849,7 @@
 /*  LlamaCalls brand tokens — declared AFTER the AlignUI @theme so they win  */
 /*  on collision. Design language: AlignUI's "design canvas" chassis —       */
 /*  neutral near-white page, hairline strokes, huge tight sans type — with   */
-/*  the violet (AlignUI purple ramp) as the single accent.                   */
+/*  PayPal blue as the single accent.                                      */
 /* ──────────────────────────────────────────────────────────────────────── */
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -859,7 +859,7 @@
   --color-ink: #0e121b;     /* slate-950 */
   --color-muted: #525866;   /* slate-600 */
   --color-line: #e1e4ea;    /* slate-200 hairline */
-  --color-marker: #7d52f4;  /* purple-500 accent */
+  --color-marker: #0070e0;  /* PayPal blue accent */
   /* Ground for the llama mark. The art is light grey, not white — it averages
      ~#d0 and vanishes on `paper`, so the plate has to sit a step below the page
      for the silhouette to read at all. Baked into the favicon and OG art too. */
@@ -908,8 +908,8 @@ body {
   position: relative;
   display: inline-block;
   padding: 0.04em 0.1em;
-  color: var(--bg-strong-950);
-  filter: drop-shadow(0 1px 2px rgba(27, 28, 29, 0.48)) drop-shadow(0 10px 24px rgba(14, 18, 27, 0.1));
+  color: var(--primary-base);
+  filter: drop-shadow(0 1px 2px rgba(0, 48, 135, 0.48)) drop-shadow(0 10px 24px rgba(0, 48, 135, 0.12));
   user-select: none;
 }
 .wordmark-fancy::after {

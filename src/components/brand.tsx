@@ -7,7 +7,7 @@ export function ShelfMark({ className }: { className?: string }) {
       <svg viewBox="0 0 24 24" className="size-[60%]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
         <path d="M4 9h16M4 17h16" />
         <rect x="6.5" y="4" width="4" height="5" rx="1" fill="currentColor" stroke="none" />
-        <rect x="12.5" y="12" width="5" height="5" rx="1" fill="#a897ff" stroke="none" />
+        <rect x="12.5" y="12" width="5" height="5" rx="1" fill="#6cb4ff" stroke="none" />
       </svg>
     </span>
   );

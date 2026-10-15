@@ -262,18 +262,18 @@ export default async function Landing() {
 
         {/* For agents */}
         <section id="agents" className="scroll-mt-20 px-4 pb-16 md:px-8 md:pb-24">
-          <div className="rounded-[28px] bg-gray-950 px-6 py-16 md:px-12 md:py-20">
+          <div className="rounded-[28px] bg-[#003087] px-6 py-16 md:px-12 md:py-20">
             <SectionHeader dark icon={Plug} eyebrow="For AI agents" title="Any agent can shop here" sub="Add the Open Shelf directory to Claude, ChatGPT or any MCP client. Each store also has its own endpoint." />
             <Reveal className="mx-auto mt-10 flex max-w-xl items-center gap-3 rounded-xl bg-white/[0.06] p-3 pl-4 ring-1 ring-white/10">
-              <code className="min-w-0 flex-1 truncate font-mono text-sm text-[#c4b5fd]">{publicUrl}/mcp</code>
+              <code className="min-w-0 flex-1 truncate font-mono text-sm text-[#9fd0ff]">{publicUrl}/mcp</code>
               <CopyButton text={`${publicUrl}/mcp`} />
             </Reveal>
             <Reveal className="mx-auto mt-10 grid max-w-5xl gap-px overflow-hidden rounded-2xl bg-white/10 md:grid-cols-4">
               {TOOLS.map((t) => (
-                <div key={t.n} className="bg-gray-950 p-6">
-                  <span className="font-mono text-xs text-[#a897ff]">{t.n}</span>
+                <div key={t.n} className="bg-[#003087] p-6">
+                  <span className="font-mono text-xs text-[#6cb4ff]">{t.n}</span>
                   <p className="mt-3 font-mono text-[13px] text-white">{t.t}</p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-gray-400">{t.d}</p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-blue-100/75">{t.d}</p>
                 </div>
               ))}
             </Reveal>

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 /** Full-width dark strip above the nav (llamacalls AnnouncementBar). */
 export function AnnouncementBar({ children }: { children: ReactNode }) {
-  return <div className="relative z-50 bg-gray-950 px-4 py-2 text-center text-[13px] text-gray-300">{children}</div>;
+  return <div className="relative z-50 bg-[#003087] px-4 py-2 text-center text-[13px] text-blue-100">{children}</div>;
 }
 
 /**
