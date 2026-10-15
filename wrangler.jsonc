@@ -11,9 +11,12 @@
   "ratelimits": [{ "name": "ASK_LIMIT", "namespace_id": "4101", "simple": { "limit": 20, "period": 60 } }],
   "vars": {
     // Cookies, PayPal return URLs and webhooks are issued for this origin. Change it to yours.
-    "PUBLIC_URL": "https://openshelf.kalashshah47.workers.dev"
+    "PUBLIC_URL": "https://openshelf.keronlabs.com"
   },
   // Secrets (`pnpm run secrets` pushes .dev.vars): BETTER_AUTH_SECRET MASTER_KEY ANTHROPIC_API_KEY
   // DEMO_PAYPAL_CLIENT_ID DEMO_PAYPAL_CLIENT_SECRET [DEMO_PAYPAL_WEBHOOK_ID] PAYPAL_LOGIN_CLIENT_ID PAYPAL_LOGIN_CLIENT_SECRET [PAYPAL_LOGIN_ENV]
+  // workers.dev stays on for existing webhooks and agent connectors; pages redirect to the domain.
+  "workers_dev": true,
+  "routes": [{ "pattern": "openshelf.keronlabs.com", "custom_domain": true }],
   "observability": { "enabled": true }
 }

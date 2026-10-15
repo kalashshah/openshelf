@@ -4,7 +4,7 @@
 
 Open Shelf turns the products a small business already sells on PayPal into a store that AI agents can search, ask questions of, and buy from. It also gives the business a web shop for people. Every store gets its own **store agent** that answers shoppers' agents from what the merchant has published. When it doesn't know something, it says so and puts the question in the merchant's inbox. Every sale is a PayPal order in the merchant's own account, approved by the buyer in PayPal.
 
-Live: **https://openshelf.kalashshah47.workers.dev** · demo store: [/s/dewdrop](https://openshelf.kalashshah47.workers.dev/s/dewdrop) · agent endpoint: `https://openshelf.kalashshah47.workers.dev/mcp`
+Live: **https://openshelf.keronlabs.com** · demo store: [/s/dewdrop](https://openshelf.keronlabs.com/s/dewdrop) · agent endpoint: `https://openshelf.keronlabs.com/mcp`
 
 ```
 Person → their agent      Find me a moisturizer for oily skin, under $30.
@@ -37,9 +37,9 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 
 ## Try it (judges)
 
-1. Open https://openshelf.kalashshah47.workers.dev and click **Try it with a demo store**. You get your own copy of the demo skincare shop, wired to a sandbox PayPal app. No sign-up needed. (Or **Set up my store with PayPal** and log in with a PayPal sandbox account: your shop is created and paid straight into that account.)
+1. Open https://openshelf.keronlabs.com and click **Try it with a demo store**. You get your own copy of the demo skincare shop, wired to a sandbox PayPal app. No sign-up needed. (Or **Set up my store with PayPal** and log in with a PayPal sandbox account: your shop is created and paid straight into that account.)
 2. **As a shopper:** open *View store*, ask "Which moisturizer suits oily skin? Is it safe in pregnancy?", then buy something. At PayPal choose **Pay with Credit or Debit Card**, set the country to United States, and use the sandbox test Visa `4005 5192 0000 0004`, any future expiry, CVV `123`, and any US address. Or log in with any PayPal sandbox personal account.
-3. **As an agent:** in Claude, go to *Settings → Connectors → Add custom connector* and paste the store endpoint shown on your Overview page (or `https://openshelf.kalashshah47.workers.dev/mcp` for the directory). Then ask: *"Find me something from Dewdrop for oily skin under $30, check it won't clog pores, and buy it."*
+3. **As an agent:** in Claude, go to *Settings → Connectors → Add custom connector* and paste the store endpoint shown on your Overview page (or `https://openshelf.keronlabs.com/mcp` for the directory). Then ask: *"Find me something from Dewdrop for oily skin under $30, check it won't clog pores, and buy it."*
 4. **As the merchant:** watch the question and order appear on Overview. Answer the pregnancy question under *Questions* and ask again. Mark the order shipped with a tracking number, or refund it under *Orders*.
 5. **Bring a real shop:** under *Products*, paste a Shopify store URL (e.g. `https://hydrogen-preview.myshopify.com`) or a price list.
 
