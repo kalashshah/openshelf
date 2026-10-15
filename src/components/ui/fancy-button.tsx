@@ -86,7 +86,7 @@ export const fancyButtonVariants = tv({
       },
     },
   ],
-  defaultVariants: { variant: 'neutral', size: 'medium' },
+  defaultVariants: { variant: 'primary', size: 'medium' },
 })
 
 type FancyButtonSharedProps = VariantProps<typeof fancyButtonVariants>

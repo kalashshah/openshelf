@@ -33,7 +33,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 </Submit>
               </form>
             )}
-            <FancyButton asChild variant="neutral" size="small">
+            <FancyButton asChild variant="primary" size="small">
               <a href="/app/products/new">
                 <Plus className="size-4" /> Add product
               </a>

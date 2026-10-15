@@ -60,7 +60,7 @@ const TOOLS = [
 function Line({ who, children, tone = 'muted' }: { who: string; children: React.ReactNode; tone?: 'muted' | 'marker' }) {
   return (
     <div className="flex gap-3 text-[13px] leading-relaxed">
-      <span className="w-20 shrink-0 pt-px font-mono text-xs text-muted">{who}</span>
+      <span className="w-32 shrink-0 pt-px font-mono text-xs text-muted">{who}</span>
       <span className={cn('min-w-0 break-words text-ink', tone === 'marker' && 'text-marker')}>{children}</span>
     </div>
   );
@@ -145,13 +145,13 @@ export default async function Landing() {
                 <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-700">Store agent online</span>
               </div>
               <div className="flex flex-col gap-3 px-5 py-5">
-                <Line who="You">Find a moisturizer for oily skin under $30. Will it clog pores?</Line>
-                <Line who="Your agent">search_products · ask_store(&ldquo;oily skin, comedogenic, fragrance?&rdquo;)</Line>
-                <Line who="Dewdrop" tone="marker">
+                <Line who="Shopper">Find a moisturizer for oily skin under $30. Will it clog pores?</Line>
+                <Line who="Shopper's agent">search_products · ask_store(&ldquo;oily skin, comedogenic, fragrance?&rdquo;)</Line>
+                <Line who="Your Store Agent" tone="marker">
                   The Oil-Free Gel Moisturizer is lab-tested non-comedogenic, with no added fragrance. Niacinamide 4% helps balance oil. $24 for 50 ml.
                 </Line>
-                <Line who="You">Buy the 50 ml.</Line>
-                <Line who="PayPal">Approved by you · $24.00 · paid to Dewdrop</Line>
+                <Line who="Shopper">Buy the 50 ml.</Line>
+                <Line who="PayPal">Approved by the shopper · $24.00 · paid to Dewdrop</Line>
               </div>
             </div>
             <div className="flex min-w-0 flex-col gap-4">

@@ -27,7 +27,7 @@ export function LoginForm({ paypalEnabled, error, next }: { paypalEnabled: boole
         )}
         {paypalEnabled ? (
           <FancyButton
-            variant="neutral"
+            variant="primary"
             size="medium"
             className="w-full"
             disabled={busy}

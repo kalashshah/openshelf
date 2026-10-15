@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 /** The Open Shelf mark: two shelves on a plate. */
 export function ShelfMark({ className }: { className?: string }) {
   return (
-    <span className={cn('inline-flex shrink-0 items-center justify-center rounded-lg bg-bg-strong-950 text-static-white', className ?? 'size-8')}>
+    <span className={cn('inline-flex shrink-0 items-center justify-center rounded-lg bg-primary-base text-static-white', className ?? 'size-8')}>
       <svg viewBox="0 0 24 24" className="size-[60%]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
         <path d="M4 9h16M4 17h16" />
         <rect x="6.5" y="4" width="4" height="5" rx="1" fill="currentColor" stroke="none" />

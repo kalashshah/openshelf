@@ -60,7 +60,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               </StatusBadge.Root>
             }
             footer={
-              <Submit pending="Saving…" variant={mode === 'app' ? 'basic' : 'neutral'}>
+              <Submit pending="Saving…" variant={mode === 'app' ? 'basic' : 'primary'}>
                 Save
               </Submit>
             }

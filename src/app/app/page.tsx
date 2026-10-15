@@ -58,7 +58,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                 <ExternalLink className="size-4" /> View store
               </a>
             </FancyButton>
-            <FancyButton asChild variant="neutral" size="small">
+            <FancyButton asChild variant="primary" size="small">
               <a href="/app/products/new">
                 <Plus className="size-4" /> Add product
               </a>

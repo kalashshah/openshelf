@@ -89,7 +89,7 @@ export function ProductCard({ p, slug, currency, canBuy, wide = false }: { p: Ca
                     key={o.label}
                     type="button"
                     onClick={() => setPicked((s) => ({ ...s, [v.name]: o.label }))}
-                    className={cn('rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition', picked[v.name] === o.label ? 'bg-bg-strong-950 text-static-white ring-transparent' : 'bg-card text-muted ring-line hover:text-ink')}
+                    className={cn('rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition', picked[v.name] === o.label ? 'bg-primary-base text-static-white ring-transparent' : 'bg-card text-muted ring-line hover:text-ink')}
                   >
                     {o.label}
                   </button>
@@ -99,7 +99,7 @@ export function ProductCard({ p, slug, currency, canBuy, wide = false }: { p: Ca
           ))}
         </div>
         <div className={cn('mt-auto flex items-center gap-2 border-t border-line bg-bg-weak-50', wide ? 'px-6 py-4 md:px-8' : 'px-4 py-3')}>
-          <FancyButton variant="neutral" size="small" className="flex-1" disabled={soldOut || !canBuy}>
+          <FancyButton variant="primary" size="small" className="flex-1" disabled={soldOut || !canBuy}>
             <PayPalMark white className="size-4" />
             {soldOut ? 'Sold out' : 'Buy with PayPal'}
           </FancyButton>

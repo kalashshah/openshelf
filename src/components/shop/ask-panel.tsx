@@ -60,7 +60,7 @@ export function AskPanel({ slug, name, hue, suggestions }: { slug: string; name:
       </div>
       <div ref={list} className="flex max-h-[360px] min-h-[200px] flex-col gap-3 overflow-y-auto px-5 py-5">
         {msgs.map((m, i) => (
-          <div key={i} className={cn('max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed', m.me ? 'self-end rounded-br-md bg-bg-strong-950 text-static-white' : 'self-start rounded-bl-md bg-paper text-ink ring-1 ring-line')}>
+          <div key={i} className={cn('max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed', m.me ? 'self-end rounded-br-md bg-primary-base text-static-white' : 'self-start rounded-bl-md bg-paper text-ink ring-1 ring-line')}>
             {m.typing ? (
               <span className="flex gap-1 py-1 text-muted" aria-label="Typing">
                 <span className="os-dot" />
