@@ -45,16 +45,35 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 
 ## How it uses PayPal
 
-| PayPal API | Used for |
-|---|---|
-| OAuth2 client credentials | per-merchant access tokens (each merchant's own app; secrets sealed with AES-GCM) |
-| **Orders v2** create / get / capture | every purchase, agent or human; `shipping_preference: GET_FROM_FILE`, so PayPal collects the address |
-| **Orders v2 tracking** (`/v2/checkout/orders/{id}/track`) | merchant's tracking number goes to PayPal and the buyer |
-| **Payments v2 captures refund** | shopper refunds inside the store's window, merchant refunds anytime |
-| **Payment Links & Buttons** (`/v1/checkout/payment-resources`) | importing a merchant's existing payment links as products, and publishing products back as links |
-| **Webhooks** + verify-webhook-signature | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`, which complete a sale even if the buyer never returns to the site |
+| PayPal API | Used for | Called through |
+|---|---|---|
+| OAuth2 client credentials | access tokens per PayPal app (merchants' own app secrets are sealed with AES-GCM) | Server SDK + REST |
+| **Orders v2** create / get / capture | every purchase, agent or human; PayPal collects the address only when something ships (`GET_FROM_FILE` / `NO_SHIPPING`) | **PayPal Server SDK** `OrdersController` |
+| **Orders v2 tracking** | the merchant's tracking number goes to PayPal and the buyer (known carriers by code, others as `OTHER` + name) | **PayPal Server SDK** `createOrderTracking` |
+| **Payments v2 captures refund** | shopper refunds inside the store's window, merchant refunds anytime | **PayPal Server SDK** `PaymentsController` |
+| **Orders v2 `payee`** | merchants who only log in with PayPal: Open Shelf's app creates the order and the money goes straight to their account | **PayPal Server SDK** |
+| **Log in with PayPal** (OpenID Connect) | the only way merchants sign in | better-auth |
+| **Payment Links & Buttons** (`/v1/checkout/payment-resources`) | importing a merchant's payment links as products, and publishing products back as links | REST (not in the SDK) |
+| **Invoicing v2** (search + get) | turning what a service business has invoiced into products | REST (not in the SDK) |
+| **Webhooks** + verify-webhook-signature | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED` complete a sale even if the buyer never comes back | REST (not in the SDK) |
 
 Paying is idempotent: the return page, the webhook and `order_status` all complete a sale, and a conditional update makes sure stock is taken only once.
+
+## Built with APIMatic's PayPal Server SDK context plugin
+
+Every money-moving call (create order, get order, capture, tracking, refund) goes through the APIMatic-generated [PayPal Server SDK](https://www.npmjs.com/package/@paypal/paypal-server-sdk) (`@paypal/paypal-server-sdk`, `src/server/paypal.ts`). That code was written by Claude Code with APIMatic's [context plugin](https://github.com/paypaldev/server-sdk-context-plugin-preview) installed:
+
+```bash
+npx context-plugins install https://github.com/paypaldev/server-sdk-context-plugin-preview --targets claude
+```
+
+The plugin's TypeScript skills caught details the types alone don't show, and they shaped the code:
+- **Client lifetime.** Build one `Client` per PayPal app and reuse it, because it caches its own OAuth token. Open Shelf keeps one per app per isolate, with `oAuthClockSkew` so tokens refresh early.
+- **Timeouts.** The generated `timeout` default is `0`, which means wait forever, so it is set explicitly.
+- **Workers runtime.** The SDK's transport is axios. `unstable_httpClientOptions: { adapter: 'fetch' }` makes it use the Workers `fetch`, so the SDK runs on Cloudflare with no Node `http`.
+- **Errors.** Operations throw `ApiError`, and the payload is on `body`. `sdkCall()` turns it into the same readable error the rest of the app shows, which also keeps the double-capture race safe (`ORDER_ALREADY_CAPTURED` returns the existing capture).
+- **Typed enums.** `CheckoutPaymentIntent`, `ItemCategory`, `PaypalWalletContextShippingPreference` and `ShipmentCarrier` are used instead of strings. Carriers PayPal knows are sent by code; any other carrier is sent as `OTHER` with its name.
+- **Tests** stub `fetch` under the SDK and assert the exact snake_case body PayPal receives: idempotency key, payee, item categories and shipping preference (`test/rules.test.ts`).
 
 ## How it uses Channel3
 
@@ -82,7 +101,7 @@ pnpm install
 cp .dev.vars.example .dev.vars   # fill in the secrets; generators are in the comments
 npx wrangler d1 create openshelf # paste the id into wrangler.jsonc
 pnpm run db:local && pnpm dev    # http://localhost:3000 (Next dev with the Cloudflare bindings)
-pnpm test                        # pricing, refund policy, search, PayPal shapes, Channel3, schema.org
+pnpm test                        # pricing, refund policy, search, PayPal SDK wire format, Channel3, schema.org
 pnpm preview                     # the built worker in workerd, as it runs in production
 ```
 
@@ -93,7 +112,7 @@ Deploy: `pnpm run db:remote && pnpm run deploy && pnpm run secrets`. To import p
 - **Next.js 15 (App Router) on Cloudflare Workers** via [OpenNext](https://opennext.js.org/cloudflare), with D1 for data and a Workers rate limiter on the AI routes.
 - **AlignUI** components on Tailwind v4 (`src/components/ui`): Button, FancyButton, Input, Select, Switch, StatusBadge, Table, Alert, Divider and the app shell, with AlignUI's design tokens in `src/app/globals.css`.
 - **better-auth** for Log in with PayPal (generic OAuth, `openid email profile`) and anonymous demo accounts.
-- **MCP TypeScript SDK** (stateless Streamable HTTP route handlers), the **Anthropic TypeScript SDK** and **PayPal REST**, all in `src/server/`.
+- **MCP TypeScript SDK** (stateless Streamable HTTP route handlers), the **Anthropic TypeScript SDK**, the **PayPal Server SDK** (APIMatic) and PayPal REST for the APIs the SDK doesn't cover, all in `src/server/`.
 - Server components render every page; server actions handle the dashboard forms; client components are the interactive parts (the store assistant, option pickers, switches).
 
 ## Known limits

@@ -1,4 +1,21 @@
-/** The slice of PayPal REST that Open Shelf needs: Orders v2, captures/refunds, tracking, Payment Links, webhooks. */
+/**
+ * The slice of PayPal that Open Shelf needs. Orders v2, captures, refunds and tracking go through the
+ * PayPal Server SDK (APIMatic-generated, built with its context plugin); Payment Links, Invoicing and
+ * webhooks are not in that SDK, so they stay plain REST below.
+ */
+import {
+  ApiError,
+  CheckoutPaymentIntent,
+  Client,
+  Environment,
+  ItemCategory,
+  OrdersController,
+  PaymentsController,
+  PaypalExperienceUserAction,
+  PaypalWalletContextShippingPreference,
+  ShipmentCarrier,
+  type Order,
+} from '@paypal/paypal-server-sdk';
 
 export interface PayPalConfig {
   clientId: string;
@@ -94,56 +111,61 @@ export class PayPal {
     return (text ? JSON.parse(text) : {}) as T;
   }
 
-  // ---- orders ----------------------------------------------------------------
+  // ---- orders, captures, tracking, refunds: PayPal Server SDK (APIMatic) ----------------
+
+  private get sdk(): { orders: OrdersController; payments: PaymentsController } {
+    return sdkFor(this.cfg);
+  }
 
   async createOrder(o: { lines: OrderLine[]; currency: string; brandName: string; referenceId: string; returnUrl: string; cancelUrl: string }): Promise<PayPalOrder> {
     const total = orderTotalCents(o.lines);
-    const raw = await this.api<RawOrder>(
-      'POST',
-      '/v2/checkout/orders',
-      {
-        intent: 'CAPTURE',
-        purchase_units: [
-          {
-            reference_id: o.referenceId,
-            ...(this.cfg.payeeEmail ? { payee: { email_address: this.cfg.payeeEmail } } : {}),
-            custom_id: o.referenceId,
-            amount: { currency_code: o.currency, value: money(total), breakdown: { item_total: { currency_code: o.currency, value: money(total) } } },
-            items: o.lines.map((l) => ({
-              name: l.name.slice(0, 127),
-              sku: l.sku.slice(0, 127),
-              quantity: String(l.quantity),
-              unit_amount: { currency_code: o.currency, value: money(l.unitCents) },
-              category: l.ships === false ? 'DIGITAL_GOODS' : 'PHYSICAL_GOODS',
-            })),
-          },
-        ],
-        payment_source: {
-          paypal: {
-            experience_context: {
-              brand_name: o.brandName.slice(0, 127),
-              // PayPal collects an address only when something in the cart ships.
-              shipping_preference: o.lines.some((l) => l.ships !== false) ? 'GET_FROM_FILE' : 'NO_SHIPPING',
-              user_action: 'PAY_NOW',
-              return_url: o.returnUrl,
-              cancel_url: o.cancelUrl,
+    const amount = (cents: number) => ({ currencyCode: o.currency, value: money(cents) });
+    const res = await sdkCall('create the order', () =>
+      this.sdk.orders.createOrder({
+        paypalRequestId: o.referenceId,
+        body: {
+          intent: CheckoutPaymentIntent.Capture,
+          purchaseUnits: [
+            {
+              referenceId: o.referenceId,
+              ...(this.cfg.payeeEmail ? { payee: { emailAddress: this.cfg.payeeEmail } } : {}),
+              customId: o.referenceId,
+              amount: { ...amount(total), breakdown: { itemTotal: amount(total) } },
+              items: o.lines.map((l) => ({
+                name: l.name.slice(0, 127),
+                sku: l.sku.slice(0, 127),
+                quantity: String(l.quantity),
+                unitAmount: amount(l.unitCents),
+                category: l.ships === false ? ItemCategory.DigitalGoods : ItemCategory.PhysicalGoods,
+              })),
+            },
+          ],
+          paymentSource: {
+            paypal: {
+              experienceContext: {
+                brandName: o.brandName.slice(0, 127),
+                // PayPal collects an address only when something in the cart ships.
+                shippingPreference: o.lines.some((l) => l.ships !== false) ? PaypalWalletContextShippingPreference.GetFromFile : PaypalWalletContextShippingPreference.NoShipping,
+                userAction: PaypalExperienceUserAction.PayNow,
+                returnUrl: o.returnUrl,
+                cancelUrl: o.cancelUrl,
+              },
             },
           },
         },
-      },
-      { 'PayPal-Request-Id': o.referenceId },
+      }),
     );
-    return toOrder(raw);
+    return fromSdkOrder(res.result);
   }
 
   async getOrder(id: string): Promise<PayPalOrder> {
-    return toOrder(await this.api<RawOrder>('GET', `/v2/checkout/orders/${encodeURIComponent(id)}`));
+    return fromSdkOrder((await sdkCall('read the order', () => this.sdk.orders.getOrder({ id }))).result);
   }
 
   /** Captures an approved order. Capturing twice (return page and webhook racing) yields the existing capture. */
   async captureOrder(id: string): Promise<PayPalOrder> {
     try {
-      return toOrder(await this.api<RawOrder>('POST', `/v2/checkout/orders/${encodeURIComponent(id)}/capture`, {}, { 'PayPal-Request-Id': `cap-${id}`, Prefer: 'return=representation' }));
+      return fromSdkOrder((await sdkCall('capture the payment', () => this.sdk.orders.captureOrder({ id, paypalRequestId: `cap-${id}`, prefer: 'return=representation' }))).result);
     } catch (e) {
       if (e instanceof PayPalError && /ORDER_ALREADY_CAPTURED/.test(e.body)) return this.getOrder(id);
       throw e;
@@ -151,16 +173,21 @@ export class PayPal {
   }
 
   async refundCapture(captureId: string, note: string): Promise<{ id: string; status: string }> {
-    return this.api('POST', `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, { note_to_payer: note.slice(0, 255) }, { 'PayPal-Request-Id': `ref-${captureId}`, Prefer: 'return=representation' });
+    const res = await sdkCall('refund the payment', () =>
+      this.sdk.payments.refundCapturedPayment({ captureId, paypalRequestId: `ref-${captureId}`, prefer: 'return=representation', body: { noteToPayer: note.slice(0, 255) } }),
+    );
+    return { id: res.result.id ?? '', status: res.result.status ?? '' };
   }
 
   async addTracking(orderId: string, captureId: string, trackingNumber: string, carrier: string): Promise<void> {
-    await this.api('POST', `/v2/checkout/orders/${encodeURIComponent(orderId)}/track`, {
-      capture_id: captureId,
-      tracking_number: trackingNumber,
-      carrier: carrier.toUpperCase().replace(/[^A-Z0-9_]/g, '_') || 'OTHER',
-      notify_payer: true,
-    });
+    const code = carrier.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const known = (Object.values(ShipmentCarrier) as string[]).includes(code) && code !== 'OTHER';
+    await sdkCall('send tracking', () =>
+      this.sdk.orders.createOrderTracking({
+        id: orderId,
+        body: { captureId, trackingNumber, notifyPayer: true, ...(known ? { carrier: code as ShipmentCarrier } : { carrier: ShipmentCarrier.Other, carrierNameOther: carrier.slice(0, 64) || 'Other' }) },
+      }),
+    );
   }
 
   // ---- invoices: what a service business has actually sold -----------------------------
@@ -261,6 +288,39 @@ export class PayPalError extends Error {
   }
 }
 
+// One SDK client per PayPal app per isolate: it caches its own OAuth token.
+const sdks = new Map<string, { orders: OrdersController; payments: PaymentsController }>();
+
+function sdkFor(cfg: PayPalConfig): { orders: OrdersController; payments: PaymentsController } {
+  const key = `${cfg.env}:${cfg.clientId}`;
+  let s = sdks.get(key);
+  if (!s) {
+    const client = new Client({
+      environment: cfg.env === 'live' ? Environment.Production : Environment.Sandbox,
+      clientCredentialsAuthCredentials: { oAuthClientId: cfg.clientId, oAuthClientSecret: cfg.clientSecret, oAuthClockSkew: 60 },
+      // The generated default is 0 = wait forever.
+      timeout: 20_000,
+      // Workers have fetch, not Node's http module: point the SDK's axios transport at fetch.
+      unstable_httpClientOptions: { adapter: 'fetch' },
+    });
+    s = { orders: new OrdersController(client), payments: new PaymentsController(client) };
+    sdks.set(key, s);
+  }
+  return s;
+}
+
+/** Runs an SDK call, turning its ApiError into the same PayPalError (and message) the REST calls raise. */
+async function sdkCall<T>(what: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e;
+    const body = typeof e.body === 'string' ? e.body : JSON.stringify(e.result ?? '');
+    if (e.statusCode === 403) throw new PayPalError(403, `PayPal refused to ${what}: this PayPal app lacks the permission. ${featureHint('')}`, body);
+    throw new PayPalError(e.statusCode, `PayPal couldn't ${what} (${e.statusCode}): ${describeError(body)}`, body);
+  }
+}
+
 // ---- pure helpers (tested) ------------------------------------------------------
 
 export function money(cents: number): string {
@@ -280,16 +340,6 @@ interface RawMoney {
   currency_code?: string;
   value?: string;
 }
-interface RawOrder {
-  id: string;
-  status: string;
-  links?: { rel: string; href: string }[];
-  payer?: { name?: { given_name?: string; surname?: string }; email_address?: string };
-  purchase_units?: {
-    shipping?: { name?: { full_name?: string }; address?: Record<string, string> };
-    payments?: { captures?: { id: string; status: string }[] };
-  }[];
-}
 interface RawPayLink {
   id: string;
   status?: string;
@@ -304,20 +354,21 @@ interface RawPayLink {
   }[];
 }
 
-export function toOrder(r: RawOrder): PayPalOrder {
-  const unit = r.purchase_units?.[0];
+/** The SDK's camelCase Order, reduced to the same shape as toOrder. */
+export function fromSdkOrder(r: Order): PayPalOrder {
+  const unit = r.purchaseUnits?.[0];
   const capture = unit?.payments?.captures?.[0];
   const a = unit?.shipping?.address;
-  const name = [r.payer?.name?.given_name, r.payer?.name?.surname].filter(Boolean).join(' ');
+  const name = [r.payer?.name?.givenName, r.payer?.name?.surname].filter(Boolean).join(' ');
   return {
-    id: r.id,
-    status: r.status,
+    id: r.id ?? '',
+    status: r.status ?? '',
     approveUrl: r.links?.find((l) => l.rel === 'payer-action' || l.rel === 'approve')?.href,
     captureId: capture?.id,
     captureStatus: capture?.status,
-    buyerName: unit?.shipping?.name?.full_name || name || undefined,
-    buyerEmail: r.payer?.email_address,
-    shipTo: a ? [a.address_line_1, a.address_line_2, a.admin_area_2, a.admin_area_1, a.postal_code, a.country_code].filter(Boolean).join(', ') : undefined,
+    buyerName: unit?.shipping?.name?.fullName || name || undefined,
+    buyerEmail: r.payer?.emailAddress,
+    shipTo: a ? [a.addressLine1, a.addressLine2, a.adminArea2, a.adminArea1, a.postalCode, a.countryCode].filter(Boolean).join(', ') : undefined,
   };
 }
 

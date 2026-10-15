@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pageDigest } from '../src/server/agent';
 import { parseVariantText, variantText } from '../src/server/variants';
-import { orderTotalCents, toOrder, toPayLink } from '../src/server/paypal';
+import { CaptureStatus, OrderStatus } from '@paypal/paypal-server-sdk';
+import { fromSdkOrder, orderTotalCents, PayPal, PayPalError, toPayLink } from '../src/server/paypal';
 import { priceFor, rank, refundPolicy, Store, UserError } from '../src/server/store';
 import { checkProduct } from '../src/server/validate';
 import { kindOf, productJsonLd } from '../src/server/catalog-view';
@@ -89,11 +90,11 @@ describe('PayPal shapes', () => {
     expect(link?.priceCents).toBe(2800);
   });
   it('reads a captured order and totals lines', () => {
-    const o = toOrder({
+    const o = fromSdkOrder({
       id: 'O1',
-      status: 'COMPLETED',
-      payer: { name: { given_name: 'Ana', surname: 'Diaz' }, email_address: 'ana@example.com' },
-      purchase_units: [{ shipping: { address: { address_line_1: '1 Main St', admin_area_2: 'Austin', admin_area_1: 'TX', postal_code: '78701', country_code: 'US' } }, payments: { captures: [{ id: 'C1', status: 'COMPLETED' }] } }],
+      status: OrderStatus.Completed,
+      payer: { name: { givenName: 'Ana', surname: 'Diaz' }, emailAddress: 'ana@example.com' },
+      purchaseUnits: [{ shipping: { address: { addressLine1: '1 Main St', adminArea2: 'Austin', adminArea1: 'TX', postalCode: '78701', countryCode: 'US' } }, payments: { captures: [{ id: 'C1', status: CaptureStatus.Completed }] } }],
     });
     expect(o).toMatchObject({ captureId: 'C1', buyerName: 'Ana Diaz', shipTo: '1 Main St, Austin, TX, 78701, US' });
     expect(orderTotalCents([{ name: 'a', sku: 'a', quantity: 2, unitCents: 2400 }, { name: 'b', sku: 'b', quantity: 1, unitCents: 1800 }])).toBe(6600);
@@ -173,5 +174,61 @@ describe('product form', () => {
     for (const bad of [{ price: 'abc' }, { price: '0' }, { stock: '-5' }, { stock: '2.5' }, { imageUrl: 'javascript:alert(1)' }, { name: '  ' }]) {
       expect(checkProduct({ ...ok, ...bad })).toHaveProperty('error');
     }
+  });
+});
+
+describe('orders through the PayPal Server SDK', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  // The SDK's transport is axios on its fetch adapter (Workers have no Node http), so stubbing fetch sees the wire.
+  function wire(reply: (url: string) => { status: number; body: unknown }) {
+    const calls: { url: string; headers: Headers; body: string }[] = [];
+    vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      calls.push({ url: req.url, headers: req.headers, body: await req.text() });
+      if (req.url.endsWith('/v1/oauth2/token')) return Response.json({ access_token: 'T', token_type: 'Bearer', expires_in: 3600 });
+      const r = reply(req.url);
+      return Response.json(r.body, { status: r.status });
+    });
+    return calls;
+  }
+  const lines = [{ name: 'Gel', sku: 'p1', quantity: 2, unitCents: 2400 }, { name: 'Review', sku: 'p2', ships: false, quantity: 1, unitCents: 9000 }];
+
+  it('creates the order PayPal expects: snake_case wire, idempotency key, payee for email-payout shops', async () => {
+    const calls = wire(() => ({ status: 201, body: { id: 'O9', status: 'PAYER_ACTION_REQUIRED', links: [{ rel: 'payer-action', href: 'https://pp/approve' }] } }));
+    const pp = new PayPal({ clientId: 'sdk-test-1', clientSecret: 's', env: 'sandbox', payeeEmail: 'me@shop.com' });
+    const o = await pp.createOrder({ lines, currency: 'USD', brandName: 'Dew', referenceId: 'ord_1', returnUrl: 'https://x/r', cancelUrl: 'https://x/c' });
+    expect(o).toMatchObject({ id: 'O9', approveUrl: 'https://pp/approve' });
+    const create = calls.find((c) => c.url === 'https://api-m.sandbox.paypal.com/v2/checkout/orders')!;
+    expect(create.headers.get('paypal-request-id')).toBe('ord_1');
+    expect(create.headers.get('authorization')).toBe('Bearer T');
+    const body = JSON.parse(create.body);
+    expect(body.purchase_units[0]).toMatchObject({ payee: { email_address: 'me@shop.com' }, amount: { value: '138.00', breakdown: { item_total: { value: '138.00' } } } });
+    expect(body.purchase_units[0].items.map((i: { category: string }) => i.category)).toEqual(['PHYSICAL_GOODS', 'DIGITAL_GOODS']);
+    expect(body.payment_source.paypal.experience_context).toMatchObject({ shipping_preference: 'GET_FROM_FILE', user_action: 'PAY_NOW', return_url: 'https://x/r' });
+  });
+
+  it('turns an SDK error into a readable PayPalError, and a double capture into the existing capture', async () => {
+    wire((url) =>
+      url.endsWith('/capture')
+        ? { status: 422, body: { name: 'UNPROCESSABLE_ENTITY', details: [{ issue: 'ORDER_ALREADY_CAPTURED', description: 'Order already captured.' }] } }
+        : { status: 200, body: { id: 'O9', status: 'COMPLETED', purchase_units: [{ payments: { captures: [{ id: 'C9', status: 'COMPLETED' }] } }] } },
+    );
+    const pp = new PayPal({ clientId: 'sdk-test-2', clientSecret: 's', env: 'sandbox' });
+    expect(await pp.captureOrder('O9')).toMatchObject({ status: 'COMPLETED', captureId: 'C9' });
+
+    wire(() => ({ status: 422, body: { name: 'UNPROCESSABLE_ENTITY', details: [{ issue: 'CAPTURE_FULLY_REFUNDED', description: 'The capture has already been fully refunded.' }] } }));
+    const err = await pp.refundCapture('C9', 'x').catch((e) => e);
+    expect(err).toBeInstanceOf(PayPalError);
+    expect(err.message).toMatch(/refund the payment \(422\).*already been fully refunded/);
+  });
+
+  it('sends a known carrier as-is and anything else as OTHER with its name', async () => {
+    const calls = wire(() => ({ status: 201, body: { id: 'O9', status: 'COMPLETED' } }));
+    const pp = new PayPal({ clientId: 'sdk-test-3', clientSecret: 's', env: 'sandbox' });
+    await pp.addTracking('O9', 'C9', '1Z999', 'usps');
+    await pp.addTracking('O9', 'C9', 'AB1', 'Bob Local Couriers');
+    const sent = calls.filter((c) => c.url.endsWith('/track')).map((c) => JSON.parse(c.body));
+    expect(sent[0]).toMatchObject({ carrier: 'USPS', capture_id: 'C9', tracking_number: '1Z999', notify_payer: true });
+    expect(sent[1]).toMatchObject({ carrier: 'OTHER', carrier_name_other: 'Bob Local Couriers' });
   });
 });
