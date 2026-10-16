@@ -35,6 +35,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const unanswered = questions.filter((q) => !q.answered && !q.merchantAnswer).length;
   const feed = [...questions.slice(0, 12).map((q) => ({ at: q.createdAt, q })), ...orders.slice(0, 12).map((o) => ({ at: o.createdAt, o }))].sort((a, b) => b.at - a.at).slice(0, 12);
   const mcp = `${env.PUBLIC_URL}/s/${shop.slug}/mcp`;
+  const directory = `${env.PUBLIC_URL}/mcp`;
 
   let c3: C3Connection[] = [];
   let c3Error = '';
@@ -79,13 +80,24 @@ export default async function Overview({ searchParams }: { searchParams: Promise
           <SectionCard
             icon={<Plug />}
             tone="primary"
-            title="Your store’s agent endpoint"
-            description="Any MCP client can ask your store questions and buy from it. In Claude: Settings → Connectors → Add custom connector."
+            title="Agent endpoint"
+            description={
+              shop.listed
+                ? 'Your store is in the Open Shelf directory: one MCP endpoint for every listed store. In Claude: Settings → Connectors → Add custom connector.'
+                : 'Any MCP client can ask your store questions and buy from it. In Claude: Settings → Connectors → Add custom connector. List your store to also appear in the Open Shelf directory.'
+            }
             footer={<p className="text-paragraph-xs text-text-sub-600">Then try: “Find me something from {shop.name} under $30, check it suits me, and buy it.”</p>}
           >
-            <div className="flex items-center gap-2 rounded-10 bg-bg-weak-50 p-2 pl-3 ring-1 ring-inset ring-stroke-soft-200">
-              <code className="min-w-0 flex-1 truncate font-mono text-paragraph-sm text-text-strong-950">{mcp}</code>
-              <CopyButton text={mcp} />
+            <div className="flex flex-col gap-3">
+              {(shop.listed ? [['Open Shelf directory · every listed store', directory], ['Just your store · to share', mcp]] : [['Your store', mcp]]).map(([label, url]) => (
+                <div key={url} className="flex flex-col gap-1.5">
+                  <span className="text-paragraph-xs text-text-sub-600">{label}</span>
+                  <div className="flex items-center gap-2 rounded-10 bg-bg-weak-50 p-2 pl-3 ring-1 ring-inset ring-stroke-soft-200">
+                    <code className="min-w-0 flex-1 truncate font-mono text-paragraph-sm text-text-strong-950">{url}</code>
+                    <CopyButton text={url} />
+                  </div>
+                </div>
+              ))}
             </div>
           </SectionCard>
 

@@ -111,7 +111,7 @@ export default async function Landing() {
 
         {/* What happened next */}
         <section className="flex flex-col gap-4 pt-24">
-          <Head eyebrow="See it work" title="An agent asks. Your store answers." sub="A shopper’s assistant talked to Dewdrop Skincare’s store agent, then bought. This is what Dewdrop saw." />
+          <Head eyebrow="See it work" title="An agent asks. Your store answers." sub="A shopper’s assistant talked to your store agent, then bought. This is what you see." />
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { icon: ShoppingBag, t: 'Order placed by an agent', d: 'Oil-Free Gel Moisturizer · 50 ml', v: '$24.00' },
@@ -182,7 +182,7 @@ export default async function Landing() {
             <div className="overflow-hidden rounded-20 bg-card shadow-card ring-1 ring-line">
               <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
                 <p className="text-sm font-semibold text-ink">Orders</p>
-                <span className="text-xs text-muted">Dewdrop Skincare</span>
+                <span className="text-xs text-muted">Your store</span>
               </div>
               {[
                 ['Oil-Free Gel Moisturizer', 'agent · Claude', '$24.00', 'Paid', 'bg-green-500/10 text-green-700'],

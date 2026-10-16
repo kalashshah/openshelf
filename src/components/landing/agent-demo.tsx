@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * The hero demo: a person types to Claude, Claude calls Open Shelf's tools and
- * asks Dewdrop's store agent, the store agent answers, the person buys in PayPal.
+ * asks your store agent, the store agent answers, the person buys in PayPal.
  * A scripted loop, not a live call.
  */
 
@@ -30,10 +30,10 @@ const REPLY = 'Yes: the Oil-Free Gel Moisturizer was lab-tested non-comedogenic 
 const SCRIPT: Step[] = [
   { kind: 'compose', text: Q1 },
   { kind: 'you', text: Q1 },
-  { kind: 'tool', tool: 'search_products', args: '"moisturizer oily skin", max_price: 30', result: '3 matches · Dewdrop Skincare' },
+  { kind: 'tool', tool: 'search_products', args: '"moisturizer oily skin", max_price: 30', result: '3 matches · your store' },
   { kind: 'ask', text: 'Will the Oil-Free Gel Moisturizer clog pores? Any fragrance?' },
   { kind: 'store', text: REPLY },
-  { kind: 'claude', text: 'Dewdrop’s Oil-Free Gel Moisturizer fits: non-comedogenic, fragrance-free, $24. Want it?' },
+  { kind: 'claude', text: 'Found it: the Oil-Free Gel Moisturizer. Non-comedogenic, fragrance-free, $24. Want it?' },
   { kind: 'compose', text: Q2 },
   { kind: 'you', text: Q2 },
   { kind: 'paypal' },
@@ -64,7 +64,7 @@ function lane(s: Step): Lane {
 const LANES: { id: Lane; label: string; icon: React.ReactNode }[] = [
   { id: 'you', label: 'You', icon: <User className="size-4 text-ink" /> },
   { id: 'claude', label: 'Claude', icon: <BrandMarkSvg name="claude" className="size-4 text-[#D97757]" /> },
-  { id: 'store', label: 'Dewdrop’s agent', icon: <ShopMark name="Dewdrop" hue={172} className="size-5 rounded-md text-[10px]" /> },
+  { id: 'store', label: 'Your store agent', icon: <ShopMark name="Your store" hue={172} className="size-5 rounded-md text-[10px]" /> },
   { id: 'paypal', label: 'PayPal', icon: <PayPalMark className="size-4" /> },
 ];
 
@@ -102,7 +102,7 @@ function StoreReply({ text, live }: { text: string; live: boolean }) {
   const { shown, done } = useTyped(text, live, 'word', 1000);
   return (
     <motion.div {...appear} className="ml-5 flex max-w-[85%] flex-col items-start">
-      <Who icon={<ShopMark name="Dewdrop" hue={172} className="size-4 rounded text-[9px]" />}>Dewdrop’s store agent · from the catalog</Who>
+      <Who icon={<ShopMark name="Your store" hue={172} className="size-4 rounded text-[9px]" />}>Your store agent · from your catalog</Who>
       <div className="rounded-2xl rounded-tl-md bg-primary-alpha-10 px-3.5 py-2.5 text-[13px] leading-relaxed text-marker ring-1 ring-inset ring-primary-alpha-16">
         {shown ? shown : (
           <span className="flex gap-1 py-1"><span className="os-dot" /><span className="os-dot" /><span className="os-dot" /></span>
@@ -128,7 +128,7 @@ function PayPalCard({ live }: { live: boolean }) {
           <span className="flex items-center gap-1.5 text-[13px] font-semibold text-[#003087]">
             <PayPalMark className="size-4" /> PayPal
           </span>
-          <span className="text-[11px] text-muted">Dewdrop Skincare</span>
+          <span className="text-[11px] text-muted">Your store</span>
         </div>
         <div className="flex flex-col gap-2.5 px-3.5 py-3">
           <div className="flex justify-between text-[13px]">
@@ -141,7 +141,7 @@ function PayPalCard({ live }: { live: boolean }) {
                 <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}>
                   <Check className="size-4" />
                 </motion.span>
-                Approved · paid to Dewdrop
+                Approved · paid to your PayPal
               </motion.div>
             ) : (
               <motion.div key="btn" exit={{ opacity: 0 }} className="flex items-center justify-center rounded-lg bg-[#ffc439] py-2 text-[13px] font-semibold text-[#003087]">
@@ -179,7 +179,7 @@ function Message({ step, live }: { step: Step; live: boolean }) {
       return (
         <motion.div {...appear} className="flex max-w-[88%] flex-col items-start">
           <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>
-            Claude <ArrowRight className="size-3" /> <ShopMark name="Dewdrop" hue={172} className="size-4 rounded text-[9px]" /> ask_store
+            Claude <ArrowRight className="size-3" /> <ShopMark name="Your store" hue={172} className="size-4 rounded text-[9px]" /> ask_store
           </Who>
           <div className="rounded-2xl rounded-tl-md bg-paper px-3.5 py-2.5 font-mono text-[12px] leading-relaxed text-ink ring-1 ring-inset ring-line">“{step.text}”</div>
         </motion.div>

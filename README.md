@@ -31,7 +31,7 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 - **The other direction too.** Products you create here can be published as PayPal payment links you can share anywhere.
 
 **For shoppers and their agents**
-- An MCP server for the **directory of listed stores** (`/mcp`) and one **per store** (`/s/<store>/mcp`). Tools: `list_stores`, `search_products`, `get_product`, `ask_store`, `buy`, `order_status`, `request_refund`.
+- **One MCP server for every listed store** (`/mcp`). Each store can also share a link scoped to just its shop (`/s/<store>/mcp`): same tools, no `store` argument needed, and it works for stores that aren't in the directory. Tools: `list_stores`, `search_products`, `get_product`, `ask_store`, `buy`, `order_status`, `request_refund`.
 - A web storefront for people at `/s/<store>`, with an "Ask the store" chat that talks to the same store agent, plus `/s/<store>/llms.txt` for agents that read rather than call tools.
 - **Nobody is charged without approving.** `buy` returns a PayPal approval link. Prices always come from the catalog, never from the agent.
 
@@ -39,7 +39,7 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 
 1. Open https://openshelf.keronlabs.com and click **Try it with a demo store**. You get your own copy of the demo skincare shop, wired to a sandbox PayPal app. No sign-up needed. (Or **Set up my store with PayPal** and log in with a PayPal sandbox account: your shop is created and paid straight into that account.)
 2. **As a shopper:** open *View store*, ask "Which moisturizer suits oily skin? Is it safe in pregnancy?", then buy something. At PayPal choose **Pay with Credit or Debit Card**, set the country to United States, and use the sandbox test Visa `4005 5192 0000 0004`, any future expiry, CVV `123`, and any US address. Or log in with any PayPal sandbox personal account.
-3. **As an agent:** in Claude, go to *Settings → Connectors → Add custom connector* and paste the store endpoint shown on your Overview page (or `https://openshelf.keronlabs.com/mcp` for the directory). Then ask: *"Find me something from Dewdrop for oily skin under $30, check it won't clog pores, and buy it."*
+3. **As an agent:** in Claude, go to *Settings → Connectors → Add custom connector* and paste `https://openshelf.keronlabs.com/mcp`, the one endpoint for every listed store. Then ask: *"Find me something from Dewdrop for oily skin under $30, check it won't clog pores, and buy it."* Demo copies stay out of the directory, so to shop your own copy, paste the store endpoint shown on its Overview page instead.
 4. **As the merchant:** watch the question and order appear on Overview. Answer the pregnancy question under *Questions* and ask again. Mark the order shipped with a tracking number, or refund it under *Orders*.
 5. **Bring a real shop:** under *Products*, paste a Shopify store URL (e.g. `https://hydrogen-preview.myshopify.com`) or a price list.
 
