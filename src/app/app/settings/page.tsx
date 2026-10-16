@@ -17,7 +17,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   return (
     <>
       <PageHeader title="Settings" description="Your store, how you get paid, and your PayPal app." />
-      <PageBody className="max-w-5xl">
+      <PageBody>
         <Notices demo={user.isAnonymous} canTakePayments={canTakePayments} n={n} e={e} />
         <form action={saveSettingsAction}>
           <SectionCard icon={<StoreIcon />} title="Your store" description="The store agent quotes this. Anything you leave out, it says it doesn’t know." footer={<Submit pending="Saving…">Save</Submit>}>
