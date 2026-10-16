@@ -62,8 +62,8 @@ function lane(s: Step): Lane {
 }
 
 const LANES: { id: Lane; label: string; icon: React.ReactNode }[] = [
-  { id: 'you', label: 'You', icon: <User className="size-4 text-ink" /> },
-  { id: 'claude', label: 'Claude', icon: <BrandMarkSvg name="claude" className="size-4 text-[#D97757]" /> },
+  { id: 'you', label: 'User', icon: <User className="size-4 text-ink" /> },
+  { id: 'claude', label: 'User’s agent', icon: <BrandMarkSvg name="claude" className="size-4 text-[#D97757]" /> },
   { id: 'store', label: 'Your store agent', icon: <ShopMark name="Your store" hue={172} className="size-5 rounded-md text-[10px]" /> },
   { id: 'paypal', label: 'PayPal', icon: <PayPalMark className="size-4" /> },
 ];
@@ -122,7 +122,7 @@ function PayPalCard({ live }: { live: boolean }) {
   }, [live]);
   return (
     <motion.div {...appear} className="flex flex-col items-start">
-      <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>Claude · buy(Oil-Free Gel Moisturizer, 50 ml)</Who>
+      <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>User’s agent (Claude) · buy(Oil-Free Gel Moisturizer, 50 ml)</Who>
       <div className="w-full max-w-[300px] overflow-hidden rounded-xl bg-card ring-1 ring-line shadow-regular-xs">
         <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5">
           <span className="flex items-center gap-1.5 text-[13px] font-semibold text-[#003087]">
@@ -162,14 +162,14 @@ function Message({ step, live }: { step: Step; live: boolean }) {
     case 'you':
       return (
         <motion.div {...appear} className="flex max-w-[80%] flex-col items-end self-end">
-          <Who icon={<User className="size-3.5" />}>You</Who>
+          <Who icon={<User className="size-3.5" />}>User</Who>
           <div className="rounded-2xl rounded-tr-md bg-primary-base px-3.5 py-2.5 text-[13px] leading-relaxed text-static-white shadow-regular-xs">{step.text}</div>
         </motion.div>
       );
     case 'claude':
       return (
         <motion.div {...appear} className="flex max-w-[88%] flex-col items-start">
-          <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>Claude</Who>
+          <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>User’s agent (Claude)</Who>
           <div className="rounded-2xl rounded-tl-md bg-paper px-3.5 py-2.5 text-[13px] leading-relaxed text-ink ring-1 ring-inset ring-line">{step.text}</div>
         </motion.div>
       );
@@ -179,7 +179,7 @@ function Message({ step, live }: { step: Step; live: boolean }) {
       return (
         <motion.div {...appear} className="flex max-w-[88%] flex-col items-start">
           <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>
-            Claude <ArrowRight className="size-3" /> <ShopMark name="Your store" hue={172} className="size-4 rounded text-[9px]" /> ask_store
+            User’s agent <ArrowRight className="size-3" /> <ShopMark name="Your store" hue={172} className="size-4 rounded text-[9px]" /> ask_store
           </Who>
           <div className="rounded-2xl rounded-tl-md bg-paper px-3.5 py-2.5 font-mono text-[12px] leading-relaxed text-ink ring-1 ring-inset ring-line">“{step.text}”</div>
         </motion.div>
@@ -200,7 +200,7 @@ function ToolCall({ step, live }: { step: Extract<Step, { kind: 'tool' }>; live:
   }, [live]);
   return (
     <motion.div {...appear} className="flex flex-col items-start">
-      <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>Claude · Open Shelf MCP</Who>
+      <Who icon={<BrandMarkSvg name="claude" className="size-3.5 text-[#D97757]" />}>User’s agent (Claude) · Open Shelf MCP</Who>
       <div className="flex max-w-full items-center gap-2 rounded-lg bg-paper px-3 py-2 font-mono text-[12px] text-ink ring-1 ring-inset ring-line">
         <Search className={cn('size-3.5 shrink-0 text-marker', !done && 'animate-pulse')} />
         <span className="truncate">
