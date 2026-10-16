@@ -1,8 +1,9 @@
 import { Fragment } from 'react';
 import { FileText, Globe, Link2, Package, Plus, Receipt, Upload } from 'lucide-react';
-import { EmptyPanel, PageBody, PageHeader, SectionCard, TABLE_CARD } from '@/components/app/chrome';
+import { EmptyPanel, PageBody, PageHeader, TABLE_CARD } from '@/components/app/chrome';
 import { Notices } from '@/components/app/notices';
 import { Submit } from '@/components/app/submit';
+import { BrandIcon } from '@/components/ui/brand-icon';
 import { FancyButton } from '@/components/ui/fancy-button';
 import { Input } from '@/components/ui/input';
 import * as StatusBadge from '@/components/ui/status-badge';
@@ -13,6 +14,25 @@ import { dashboard } from '@/server/page-context';
 import { fmt } from '@/server/store';
 import { variantText } from '@/server/variants';
 import { importInvoicesAction, importPayLinksAction, importTextAction, importUrlAction, publishLinksAction } from '../actions';
+
+/** A plain icon on the same tile as a brand logo. */
+function Tile({ icon }: { icon: React.ReactNode }) {
+  return <span className="flex size-7 items-center justify-center rounded-lg bg-bg-white-0 text-text-sub-600 shadow-regular-xs ring-1 ring-inset ring-stroke-soft-200 [&>svg]:size-3.5">{icon}</span>;
+}
+
+/** One way to bring products in: who's involved, what it does, and its form pinned to the bottom. */
+function ImportCard({ marks, title, description, children }: { marks: React.ReactNode[]; title: string; description: string; children: React.ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-4 rounded-20 bg-bg-white-0 p-4 shadow-fancy-buttons-stroke transition-shadow hover:shadow-regular-md">
+      <span className="flex items-center gap-1.5">{marks}</span>
+      <div>
+        <h3 className="text-label-sm text-text-strong-950">{title}</h3>
+        <p className="mt-1 text-paragraph-xs leading-relaxed text-text-sub-600">{description}</p>
+      </div>
+      <div className="mt-auto">{children}</div>
+    </section>
+  );
+}
 
 export default async function Products({ searchParams }: { searchParams: Promise<{ n?: string; e?: string }> }) {
   const { store, shop, user, canTakePayments, mode } = await dashboard();
@@ -43,49 +63,43 @@ export default async function Products({ searchParams }: { searchParams: Promise
       />
       <PageBody>
         <Notices demo={user.isAnonymous} canTakePayments={canTakePayments} n={n} e={e} />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SectionCard
-            icon={<Link2 />}
-            tone="primary"
-            title="PayPal payment links"
-            description="Every payment link in your PayPal becomes a product, with its price and options."
-            footer={
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-label-md text-text-strong-950">Bring in your products</h2>
+            <p className="text-paragraph-xs text-text-sub-600">Use any of these, as often as you like. Imports add to what’s already here.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <ImportCard marks={[<BrandIcon key="p" name="paypal" size="sm" />]} title="PayPal payment links" description="Every payment link becomes a product, with its price and options.">
               <form action={importPayLinksAction}>
-                <Submit pending="Importing…">
+                <Submit variant="basic" pending="Importing…" className="w-full">
                   <Upload className="size-4" /> Import links
                 </Submit>
               </form>
-            }
-          />
-          <SectionCard
-            icon={<Receipt />}
-            tone="primary"
-            title="PayPal invoices"
-            description="Sell services? Claude turns what you’ve invoiced into offerings agents can book and pay for."
-            footer={
+            </ImportCard>
+            <ImportCard marks={[<BrandIcon key="p" name="paypal" size="sm" />, <BrandIcon key="c" name="claude" size="sm" />]} title="PayPal invoices" description="Sell services? Claude turns what you’ve invoiced into offerings agents can book.">
               <form action={importInvoicesAction}>
-                <Submit pending="Reading invoices…">
-                  <Upload className="size-4" /> Import invoices
+                <Submit variant="basic" pending="Reading invoices…" className="w-full">
+                  <Receipt className="size-4" /> Import invoices
                 </Submit>
               </form>
-            }
-          />
-          <SectionCard icon={<Globe />} title="Shopify or any shop page" description="A Shopify store converts exactly; any other page is read by Claude.">
-            <form action={importUrlAction} className="flex flex-col gap-2">
-              <Input name="url" type="url" required placeholder="https://yourshop.com" />
-              <Submit pending="Importing…" className="self-start">
-                Import
-              </Submit>
-            </form>
-          </SectionCard>
-          <SectionCard icon={<FileText />} title="A price list or CSV" description="Paste anything with names and prices.">
-            <form action={importTextAction} className="flex flex-col gap-2">
-              <Textarea name="text" required rows={2} placeholder={'Lavender soap bar, $8, 100 g\nGift box of 3 soaps, $21'} />
-              <Submit pending="Reading…" className="self-start">
-                Read it with AI
-              </Submit>
-            </form>
-          </SectionCard>
+            </ImportCard>
+            <ImportCard marks={[<BrandIcon key="s" name="shopify" size="sm" />, <Tile key="g" icon={<Globe />} />]} title="Shopify or any shop page" description="Shopify stores convert exactly. Claude reads any other page.">
+              <form action={importUrlAction} className="flex flex-col gap-2">
+                <Input name="url" type="url" required placeholder="https://yourshop.com" />
+                <Submit variant="basic" pending="Importing…" className="w-full">
+                  <Globe className="size-4" /> Import from URL
+                </Submit>
+              </form>
+            </ImportCard>
+            <ImportCard marks={[<Tile key="f" icon={<FileText />} />, <BrandIcon key="c" name="claude" size="sm" />]} title="A price list or CSV" description="Paste anything with names and prices. Claude sorts it out.">
+              <form action={importTextAction} className="flex flex-col gap-2">
+                <Textarea name="text" required rows={2} placeholder={'Lavender soap bar, $8, 100 g\nGift box of 3 soaps, $21'} />
+                <Submit variant="basic" pending="Reading…" className="w-full">
+                  <FileText className="size-4" /> Read it with AI
+                </Submit>
+              </form>
+            </ImportCard>
+          </div>
         </div>
 
         <div className={TABLE_CARD}>
