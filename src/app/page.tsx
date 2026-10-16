@@ -12,23 +12,18 @@ import {
   Undo2,
 } from 'lucide-react';
 import { DemoButton } from '@/components/common/demo-button';
-import { Wordmark } from '@/components/brand';
 import { BrandIcon } from '@/components/ui/brand-icon';
 import { FancyButton } from '@/components/ui/fancy-button';
 import { Reveal } from '@/components/ui/reveal';
 import { Typography } from '@/components/ui/typography';
+import { SiteHeader } from '@/components/landing/site-header';
+import { AgentDemo } from '@/components/landing/agent-demo';
 import { CopyButton } from '@/components/common/copy-button';
 import { currentUser } from '@/server/session';
 import { getEnv } from '@/server/env';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-const NAV = [
-  { href: '#how', label: 'How it works' },
-  { href: '#agents', label: 'For agents' },
-  { href: '/s/dewdrop', label: 'Demo store' },
-];
 
 const STEPS = [
   { title: 'Bring your PayPal shop', body: 'Log in with PayPal, then import your payment links and invoices, a Shopify store, any product page or a price list you paste.' },
@@ -68,35 +63,12 @@ function Head({ eyebrow, title, sub, dark = false }: { eyebrow: string; title: R
   );
 }
 
-function Line({ who, children, tone = 'muted' }: { who: string; children: React.ReactNode; tone?: 'muted' | 'marker' }) {
-  return (
-    <div className="flex gap-3 text-[13px] leading-relaxed">
-      <span className="w-32 shrink-0 pt-px font-mono text-xs text-muted">{who}</span>
-      <span className={cn('min-w-0 break-words text-ink', tone === 'marker' && 'text-marker')}>{children}</span>
-    </div>
-  );
-}
-
 export default async function Landing() {
   if (await currentUser()) redirect('/app');
   const publicUrl = getEnv().PUBLIC_URL;
   return (
     <div id="top" className="relative min-h-screen overflow-x-clip pb-12">
-      <header className="sticky top-3 z-50 mx-auto mt-3 flex w-[calc(100%-2rem)] max-w-[1120px] items-center justify-between gap-3 rounded-2xl bg-card/75 py-2 pl-4 pr-2 shadow-regular-md ring-1 ring-line backdrop-blur-xl">
-        <a href="/#top">
-          <Wordmark />
-        </a>
-        <nav className="hidden items-center gap-1 md:flex">
-          {NAV.map((l) => (
-            <a key={l.href} href={l.href} className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted transition hover:bg-bg-weak-50 hover:text-ink">
-              {l.label}
-            </a>
-          ))}
-        </nav>
-        <FancyButton asChild variant="primary" size="small">
-          <a href="/login">Set up with PayPal</a>
-        </FancyButton>
-      </header>
+      <SiteHeader />
 
       <div className="mx-auto max-w-[1160px] px-4 md:px-5">
         {/* Hero: copy left, the conversation right */}
@@ -128,74 +100,60 @@ export default async function Landing() {
               <span>Shoppers bring</span>
               <BrandIcon name="openai" />
               <BrandIcon name="google" />
-              <span>Claude and any MCP client</span>
+              <BrandIcon name="claude" />
+              <span>or any MCP client</span>
             </Reveal>
           </div>
-          <Reveal delay={200} className="min-w-0 overflow-hidden rounded-20 bg-card shadow-card ring-1 ring-line">
-            <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-              <div>
-                <p className="text-sm font-semibold text-ink">Shopping Dewdrop Skincare</p>
-                <p className="text-xs text-muted">via Claude · today, 10:24</p>
-              </div>
-              <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-700">Store agent online</span>
-            </div>
-            <div className="flex flex-col gap-3 px-5 py-5">
-              <Line who="Shopper">Find a moisturizer for oily skin under $30. Will it clog pores?</Line>
-              <Line who="Shopper's agent">search_products · ask_store(&ldquo;oily skin, comedogenic, fragrance?&rdquo;)</Line>
-              <Line who="Your Store Agent" tone="marker">
-                The Oil-Free Gel Moisturizer is lab-tested non-comedogenic, with no added fragrance. Niacinamide 4% helps balance oil. $24 for 50 ml.
-              </Line>
-              <Line who="Shopper">Buy the 50 ml.</Line>
-              <Line who="PayPal">Approved by the shopper · $24.00 · paid to Dewdrop</Line>
-            </div>
+          <Reveal delay={200} className="min-w-0">
+            <AgentDemo />
           </Reveal>
         </section>
 
         {/* What happened next */}
         <section className="flex flex-col gap-4 pt-24">
           <Head eyebrow="See it work" title="An agent asks. Your store answers." sub="A shopper’s assistant talked to Dewdrop Skincare’s store agent, then bought. This is what Dewdrop saw." />
-          <Reveal className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { icon: ShoppingBag, t: 'Order placed by an agent', d: 'Oil-Free Gel Moisturizer · 50 ml', v: '$24.00' },
               { icon: Check, t: 'Approved in PayPal', d: 'The buyer signed off; nothing moved before that', v: 'Paid' },
               { icon: Truck, t: 'Tracking sent to PayPal', d: 'USPS 9400 1118 9922 3817 4963', v: 'Shipped' },
               { icon: MessagesSquare, t: 'A question it couldn’t answer', d: '“Safe in pregnancy?” → your inbox; your answer teaches it', v: 'Asked you' },
-            ].map((r) => (
-              <div key={r.t} className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-regular-xs ring-1 ring-line">
+            ].map((r, i) => (
+              <Reveal key={r.t} delay={i * 110} className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-regular-xs ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-regular-md">
                 <span className={ICON_TILE}>
                   <r.icon className="size-4" />
                 </span>
                 <p className="text-[15px] font-semibold text-ink">{r.t}</p>
                 <p className="text-[13px] leading-relaxed text-muted">{r.d}</p>
                 <span className="mt-auto text-xs font-medium text-marker">{r.v}</span>
-              </div>
+              </Reveal>
             ))}
-          </Reveal>
+          </div>
         </section>
 
         {/* How it works */}
         <section id="how" className="flex scroll-mt-24 flex-col gap-4 pt-24">
           <Head eyebrow="How it works" title="From PayPal to AI shoppers" sub="Three steps, and nothing for you to host." />
-          <Reveal className="mt-4 grid gap-x-6 md:grid-cols-3">
+          <div className="mt-4 grid gap-x-6 md:grid-cols-3">
             {STEPS.map((s, i) => (
-              <div key={s.title} className="flex flex-col gap-1.5 border-t border-line py-5">
+              <Reveal key={s.title} delay={i * 120} className="flex flex-col gap-1.5 border-t border-line py-5">
                 <span className="mb-2 font-mono text-sm font-medium text-marker">{String(i + 1).padStart(2, '0')}</span>
                 <h3 className="text-base font-semibold tracking-[-0.01em] text-ink">{s.title}</h3>
                 <p className="text-sm leading-relaxed text-muted">{s.body}</p>
-              </div>
+              </Reveal>
             ))}
-          </Reveal>
-          <Reveal className="grid gap-x-6 md:grid-cols-3">
-            {CELLS.map((c) => (
-              <div key={c.title} className="flex flex-col gap-1.5 border-t border-line py-5">
+          </div>
+          <div className="grid gap-x-6 md:grid-cols-3">
+            {CELLS.map((c, i) => (
+              <Reveal key={c.title} delay={i * 120} className="flex flex-col gap-1.5 border-t border-line py-5">
                 <span className={cn(ICON_TILE, 'mb-2')}>
                   <c.icon className="size-4" />
                 </span>
                 <h3 className="text-[15px] font-semibold text-ink">{c.title}</h3>
                 <p className="text-sm leading-relaxed text-muted">{c.body}</p>
-              </div>
+              </Reveal>
             ))}
-          </Reveal>
+          </div>
         </section>
 
         {/* After the sale */}
@@ -230,8 +188,8 @@ export default async function Landing() {
                 ['Oil-Free Gel Moisturizer', 'agent · Claude', '$24.00', 'Paid', 'bg-green-500/10 text-green-700'],
                 ['Clarifying Gel Cleanser', 'agent · ChatGPT', '$18.00', 'Shipped', 'bg-blue-500/10 text-blue-700'],
                 ['Rose Clay Mask', 'store page', '$22.00', 'Refunded', 'bg-gray-500/10 text-gray-700'],
-              ].map(([n, w, p, s, c]) => (
-                <div key={n} className="flex items-center gap-3 border-b border-line px-5 py-4 last:border-b-0">
+              ].map(([n, w, p, s, c], i) => (
+                <Reveal key={n} delay={200 + i * 150} className="flex items-center gap-3 border-b border-line px-5 py-4 last:border-b-0">
                   <span className="flex size-9 items-center justify-center rounded-lg bg-paper ring-1 ring-line">
                     <PackageCheck className="size-4 text-ink" />
                   </span>
@@ -241,7 +199,7 @@ export default async function Landing() {
                   </div>
                   <span className="text-sm tabular-nums text-ink">{p}</span>
                   <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium', c)}>{s}</span>
-                </div>
+                </Reveal>
               ))}
             </div>
           </Reveal>
@@ -254,15 +212,15 @@ export default async function Landing() {
             <code className="min-w-0 flex-1 truncate font-mono text-sm text-[#9fd0ff]">{publicUrl}/mcp</code>
             <CopyButton text={`${publicUrl}/mcp`} />
           </Reveal>
-          <Reveal className="mt-10 grid gap-x-6 sm:grid-cols-2 lg:grid-cols-4">
-            {TOOLS.map((t) => (
-              <div key={t.n} className="border-t border-white/10 py-5">
+          <div className="mt-10 grid gap-x-6 sm:grid-cols-2 lg:grid-cols-4">
+            {TOOLS.map((t, i) => (
+              <Reveal key={t.n} delay={i * 110} className="border-t border-white/10 py-5">
                 <span className="font-mono text-xs text-[#6cb4ff]">{t.n}</span>
                 <p className="mt-3 font-mono text-[13px] text-white">{t.t}</p>
                 <p className="mt-2 text-[13px] leading-relaxed text-gray-400">{t.d}</p>
-              </div>
+              </Reveal>
             ))}
-          </Reveal>
+          </div>
         </section>
 
         {/* CTA */}

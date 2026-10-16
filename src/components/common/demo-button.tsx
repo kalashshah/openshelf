@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { FancyButton } from '@/components/ui/fancy-button';
 
 /** "Try the demo": an anonymous account with its own seeded shop, no sign-up. */
-export function DemoButton({ className, variant = 'basic', size = 'medium', children = 'Try the demo store' }: { className?: string; variant?: 'basic' | 'neutral' | 'primary'; size?: 'medium' | 'small'; children?: React.ReactNode }) {
+export function DemoButton({ className, variant = 'basic', size = 'medium', children = 'Try the demo store', full = false }: { full?: boolean; className?: string; variant?: 'basic' | 'neutral' | 'primary'; size?: 'medium' | 'small'; children?: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
-    <span className="inline-flex flex-col items-center">
+    <span className={full ? 'flex w-full flex-col items-stretch' : 'inline-flex flex-col items-center'}>
       <FancyButton
         variant={variant}
         size={size}
