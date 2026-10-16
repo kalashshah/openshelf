@@ -1,5 +1,5 @@
 /** Pure helpers for showing a product: packshot art for products without a photo, URLs, and schema.org data. */
-import { fmt, type Product, type Shop } from './store';
+import { fmt, priceFor, type Product, type Shop } from './store';
 
 function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
@@ -60,6 +60,23 @@ export function productArt(p: Pick<Product, 'name' | 'description' | 'needsShipp
 
 export function productUrl(publicUrl: string, shop: Shop, p: Product): string {
   return `${publicUrl}/s/${shop.slug}/p/${p.id}`;
+}
+
+/**
+ * Ready-made checkout links, one per option combination: an assistant that can only read pages (plain ChatGPT
+ * or Claude, no MCP) hands the person one of these. Opening it only shows a confirm page; the PayPal order is
+ * created when the person clicks Continue. ponytail: capped at 12 combinations; past that, the link without
+ * options lets the person pick on the page.
+ */
+export function checkoutLinks(publicUrl: string, shop: Pick<Shop, 'slug' | 'currency'>, p: Pick<Product, 'id' | 'name' | 'priceCents' | 'variants'>): { label: string; price: string; url: string }[] {
+  const base = `${publicUrl}/s/${shop.slug}/checkout/${p.id}`;
+  let combos: Record<string, string>[] = [{}];
+  for (const v of p.variants) combos = combos.flatMap((c) => v.options.map((o) => ({ ...c, [v.name]: o.label })));
+  if (combos.length > 12) return [{ label: 'pick options on the page', price: `from ${fmt(p.priceCents, shop.currency)}`, url: base }];
+  return combos.map((c) => {
+    const q = new URLSearchParams(c).toString();
+    return { label: Object.values(c).join(', '), price: fmt(priceFor(p, c).unitCents, shop.currency), url: q ? `${base}?${q}` : base };
+  });
 }
 
 export function productImageUrl(publicUrl: string, shop: Shop, p: Product): string {

@@ -5,7 +5,7 @@ import { CaptureStatus, OrderStatus } from '@paypal/paypal-server-sdk';
 import { fromSdkOrder, orderTotalCents, PayPal, PayPalError, toPayLink } from '../src/server/paypal';
 import { priceFor, rank, refundPolicy, Store, UserError } from '../src/server/store';
 import { checkProduct } from '../src/server/validate';
-import { kindOf, productJsonLd } from '../src/server/catalog-view';
+import { checkoutLinks, kindOf, productJsonLd } from '../src/server/catalog-view';
 import { domainOf, mainImage, marketOf } from '../src/server/channel3';
 
 const moisturizer = {
@@ -230,5 +230,16 @@ describe('orders through the PayPal Server SDK', () => {
     const sent = calls.filter((c) => c.url.endsWith('/track')).map((c) => JSON.parse(c.body));
     expect(sent[0]).toMatchObject({ carrier: 'USPS', capture_id: 'C9', tracking_number: '1Z999', notify_payer: true });
     expect(sent[1]).toMatchObject({ carrier: 'OTHER', carrier_name_other: 'Bob Local Couriers' });
+  });
+});
+
+describe('checkoutLinks', () => {
+  it('gives one priced link per option combination', () => {
+    const links = checkoutLinks('https://x.test', { slug: 'dew', currency: 'USD' }, { id: 'p1', ...moisturizer });
+    expect(links).toEqual([
+      { label: '50 ml, None', price: '$24.00', url: 'https://x.test/s/dew/checkout/p1?Size=50+ml&Scent=None' },
+      { label: '100 ml, None', price: '$38.00', url: 'https://x.test/s/dew/checkout/p1?Size=100+ml&Scent=None' },
+    ]);
+    expect(checkoutLinks('https://x.test', { slug: 'dew', currency: 'USD' }, { id: 'p2', name: 'Bar', priceCents: 800, variants: [] })).toEqual([{ label: '', price: '$8.00', url: 'https://x.test/s/dew/checkout/p2' }]);
   });
 });

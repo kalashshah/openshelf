@@ -11,7 +11,7 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ e?: st
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shop = await new Store(getEnv()).shopBySlug((await params).slug);
-  return shop ? { title: shop.name, description: shop.tagline } : {};
+  return shop ? { title: shop.name, description: shop.tagline, alternates: { types: { 'text/plain': `/s/${shop.slug}/llms.txt` } } } : {};
 }
 
 export default async function ShopRoute({ params, searchParams }: Props) {
