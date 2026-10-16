@@ -144,17 +144,8 @@ function PayPalCard({ live }: { live: boolean }) {
                 Approved · paid to Dewdrop
               </motion.div>
             ) : (
-              <motion.div key="btn" exit={{ opacity: 0 }} className="relative flex items-center justify-center rounded-lg bg-[#ffc439] py-2 text-[13px] font-semibold text-[#003087]">
+              <motion.div key="btn" exit={{ opacity: 0 }} className="flex items-center justify-center rounded-lg bg-[#ffc439] py-2 text-[13px] font-semibold text-[#003087]">
                 Approve $24.00
-                {live && (
-                  <motion.span
-                    aria-hidden
-                    className="absolute size-4 rounded-full bg-black/25 ring-2 ring-white"
-                    initial={{ x: 70, y: 30, opacity: 0 }}
-                    animate={{ x: 30, y: 4, opacity: [0, 1, 1, 0.6], scale: [1, 1, 0.8, 1] }}
-                    transition={{ duration: 1.6, times: [0, 0.4, 0.9, 1] }}
-                  />
-                )}
               </motion.div>
             )}
           </AnimatePresence>
