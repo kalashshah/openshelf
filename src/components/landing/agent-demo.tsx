@@ -172,7 +172,7 @@ function Message({ step, live }: { step: Step; live: boolean }) {
       return (
         <motion.div {...appear} className="flex max-w-[80%] flex-col items-end self-end">
           <Who icon={<User className="size-3.5" />}>You</Who>
-          <div className="rounded-2xl rounded-tr-md bg-ink px-3.5 py-2.5 text-[13px] leading-relaxed text-white dark:text-gray-950">{step.text}</div>
+          <div className="rounded-2xl rounded-tr-md bg-primary-base px-3.5 py-2.5 text-[13px] leading-relaxed text-static-white shadow-regular-xs">{step.text}</div>
         </motion.div>
       );
     case 'claude':
