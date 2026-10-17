@@ -41,7 +41,7 @@ export default async function ProductEdit({ params, searchParams }: { params: Pr
           )
         }
       />
-      <PageBody className="max-w-5xl">
+      <PageBody>
         <Notices demo={user.isAnonymous} canTakePayments={canTakePayments} n={n} e={e} />
         <form action={save}>
           <SectionCard icon={<Package />} title="Product" description="The store agent quotes the description, so say who it suits, sizes, materials or ingredients." footer={<Submit pending="Saving…">Save product</Submit>}>
