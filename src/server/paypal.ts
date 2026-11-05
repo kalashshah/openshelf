@@ -75,7 +75,9 @@ export class PayPal {
   }
 
   private get tokenKey(): string {
-    return `${this.cfg.env}:${this.cfg.clientId}:${this.cfg.clientSecret.slice(-8)}`;
+    // The whole secret is part of the key (in this isolate's memory only): client ids are public, so a cache hit
+    // must prove the caller holds the secret, or someone pasting another merchant's client id would get its token.
+    return `${this.cfg.env}:${this.cfg.clientId}:${this.cfg.clientSecret}`;
   }
 
   private async token(): Promise<string> {
@@ -321,8 +323,8 @@ export class PayPalError extends Error {
 const sdks = new Map<string, { orders: OrdersController; payments: PaymentsController }>();
 
 function sdkFor(cfg: PayPalConfig): { orders: OrdersController; payments: PaymentsController } {
-  // The secret is part of the key so a rotated secret gets a fresh client instead of a stale cached one.
-  const key = `${cfg.env}:${cfg.clientId}:${cfg.clientSecret.slice(-8)}`;
+  // The whole secret is part of the key: a rotated secret gets a fresh client, and a wrong one never reuses a right one's.
+  const key = `${cfg.env}:${cfg.clientId}:${cfg.clientSecret}`;
   let s = sdks.get(key);
   if (!s) {
     const client = new Client({

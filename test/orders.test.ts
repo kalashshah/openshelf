@@ -217,3 +217,26 @@ describe('small rules', () => {
     expect(cheapestCents({ priceCents: 3800, variants: [{ name: 'Size', options: [{ label: '50 ml', price_cents: 2400 }, { label: '100 ml' }] }] })).toBe(2400);
   });
 });
+
+describe('PayPal token cache', () => {
+  it('never hands a cached token to someone with the right client id but the wrong secret', async () => {
+    const { PayPal } = await import('../src/server/paypal');
+    const seen: string[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/v1/oauth2/token')) {
+        const auth = String((init?.headers as Record<string, string>).Authorization);
+        seen.push(auth);
+        return auth === `Basic ${btoa('cid:right')}` ? Response.json({ access_token: 'T', expires_in: 3600 }) : new Response('no', { status: 401 });
+      }
+      return Response.json({ webhooks: [] });
+    }) as typeof fetch;
+    try {
+      await new PayPal({ env: 'sandbox', clientId: 'cid', clientSecret: 'right' }).upgradeWebhook('https://x');
+      await expect(new PayPal({ env: 'sandbox', clientId: 'cid', clientSecret: 'wrong' }).upgradeWebhook('https://x')).rejects.toThrow(/auth failed/);
+      expect(seen).toHaveLength(2);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
