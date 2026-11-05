@@ -1,5 +1,6 @@
 import { Check, Clock } from 'lucide-react';
 import { Centered } from '@/components/common/centered';
+import { ClearCart } from '@/components/shop/clear-cart';
 import { FancyButton } from '@/components/ui/fancy-button';
 import { getEnv } from '@/server/env';
 import { fmt, Store } from '@/server/store';
@@ -35,6 +36,7 @@ export default async function CheckoutReturn({ searchParams }: { searchParams: P
   }
   return paid && order ? (
     <Centered icon={<Check className="size-5 text-success-base" />} title="You’re all set" actions={back}>
+      {shop && <ClearCart slug={shop.slug} />}
       {shop?.name ?? 'The store'} has your order <span className="font-medium text-ink">{order.id}</span> for <span className="font-medium text-ink">{fmt(order.totalCents, order.currency)}</span>, paid with PayPal. If an AI agent placed it, go back to it now: it can check the order and tracking for you.
     </Centered>
   ) : (

@@ -1,10 +1,11 @@
 'use client';
 
-import { Minus, MessageCircle, Plus } from 'lucide-react';
+import { Minus, MessageCircle, Plus, ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
 import { PayPalMark } from '@/components/brand';
 import { FancyButton } from '@/components/ui/fancy-button';
 import { cn } from '@/lib/utils';
+import { useCart } from './cart';
 
 export interface CardProduct {
   id: string;
@@ -31,6 +32,7 @@ function money(cents: number, currency: string) {
 export function ProductCard({ p, slug, currency, canBuy, wide = false }: { p: CardProduct; slug: string; currency: string; canBuy: boolean; wide?: boolean }) {
   const [picked, setPicked] = useState<Record<string, string>>(() => Object.fromEntries(p.variants.map((v) => [v.name, v.options[0]?.label ?? ''])));
   const [qty, setQty] = useState(1);
+  const cart = useCart();
   const unit = p.variants.reduce((c, v) => v.options.find((o) => o.label === picked[v.name])?.price_cents ?? c, p.priceCents);
   const soldOut = p.stock === 0;
   const flag = soldOut ? ['Sold out', 'text-error-base'] : p.stock !== null && p.stock <= 10 ? [`Only ${p.stock} left`, 'text-warning-base'] : !p.needsShipping ? ['Service', 'text-muted'] : null;
@@ -103,6 +105,19 @@ export function ProductCard({ p, slug, currency, canBuy, wide = false }: { p: Ca
             <PayPalMark white className="size-4" />
             {soldOut ? 'Sold out' : 'Buy with PayPal'}
           </FancyButton>
+          {cart && (
+            <FancyButton
+              type="button"
+              variant="basic"
+              size="small"
+              disabled={soldOut || !canBuy}
+              aria-label={`Add ${p.name} to bag`}
+              title="Add to bag"
+              onClick={() => cart.add({ productId: p.id, name: p.name, options: picked, quantity: qty, unitCents: unit })}
+            >
+              <ShoppingBag className="size-4" />
+            </FancyButton>
+          )}
           <FancyButton type="button" variant="basic" size="small" onClick={() => window.dispatchEvent(new CustomEvent('ask-about', { detail: { id: p.id, name: p.name } }))}>
             <MessageCircle className="size-4" />
             Ask

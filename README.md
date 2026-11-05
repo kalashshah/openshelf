@@ -32,7 +32,7 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 
 **For shoppers and their agents**
 - **One MCP server for every listed store** (`/mcp`). Each store can also share a link scoped to just its shop (`/s/<store>/mcp`): same tools, no `store` argument needed, and it works for stores that aren't in the directory. Tools: `list_stores`, `search_products`, `get_product`, `ask_store`, `check_question`, `buy`, `order_status`, `request_refund`.
-- A web storefront for people at `/s/<store>`, with an "Ask the store" chat that talks to the same store agent, plus `/s/<store>/llms.txt` for agents that read rather than call tools.
+- A web storefront for people at `/s/<store>` with a bag for buying several items in one PayPal checkout, with an "Ask the store" chat that talks to the same store agent, plus `/s/<store>/llms.txt` for agents that read rather than call tools.
 - **Nobody is charged without approving.** `buy` returns a PayPal approval link. Prices always come from the catalog, never from the agent.
 - **Guardrails for agents that spend money.** `buy` takes `max_total` (the most the person agreed to spend; above it no order is opened) and an `idempotency_key` (a retried call returns the same order, never a second one). Sold-out products are left out of search.
 - **Questions get answered later too.** When the store agent doesn't know, `ask_store` returns a `question_id`; once the merchant answers, `check_question` returns the answer to the agent that asked, and every future shopper's agent gets it as well.
