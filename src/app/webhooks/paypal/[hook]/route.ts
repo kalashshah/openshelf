@@ -47,21 +47,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ hoo
   let verified = env.WEBHOOK_VERIFY === 'off';
   for (const pp of candidates) if (!verified && pp) verified = await pp.verifyWebhook(request.headers, raw);
   if (!verified) return Response.json({ error: 'bad signature' }, { status: 401 });
-  // PayPal retries until it gets a 2xx; a delivery already handled is acknowledged and skipped.
+  // PayPal retries until it gets a 2xx. Claim the delivery first so two at once are handled once; give the claim
+  // back if handling fails, so PayPal's retry gets another go.
   const seen = event.id ? `wh:${event.id}` : null;
-  if (seen && (await store.kvGet(seen))) return Response.json({ ok: true, duplicate: true });
-
-  if (type === 'PAYMENT.CAPTURE.REFUNDED') {
-    // Refund resources carry the running total on the capture; fall back to this refund's own amount.
-    const total = r.seller_payable_breakdown?.total_refunded_amount?.value;
-    if (total !== undefined) await store.syncRefundTotal(order.id, toCents(total), r.note_to_payer ?? 'Refunded in PayPal');
-    else await store.recordRefund(order.id, toCents(r.amount?.value), r.note_to_payer ?? 'Refunded in PayPal');
-  } else if (type === 'PAYMENT.CAPTURE.REVERSED') {
-    await store.markRefunded(order.id, 'Reversed by PayPal (a chargeback or payment reversal)');
-  } else {
-    await store.sync(shop, order);
+  if (seen && !(await store.claimKey(seen))) return Response.json({ ok: true, duplicate: true });
+  try {
+    if (type === 'PAYMENT.CAPTURE.REFUNDED') {
+      // Refund resources carry the running total on the capture, which makes this idempotent with our own refund call.
+      const total = r.seller_payable_breakdown?.total_refunded_amount?.value;
+      await store.applyRefund(order.id, { refundId: r.id, cents: toCents(r.amount?.value), totalRefundedCents: total === undefined ? undefined : toCents(total) }, r.note_to_payer ?? 'Refunded in PayPal');
+    } else if (type === 'PAYMENT.CAPTURE.REVERSED') {
+      await store.markRefunded(order.id, 'Reversed by PayPal (a chargeback or payment reversal)');
+    } else {
+      await store.sync(shop, order);
+    }
+  } catch (e) {
+    if (seen) await store.releaseKey(seen);
+    throw e;
   }
-  if (seen) await store.kvSet(seen, String(Date.now()));
   return Response.json({ ok: true });
 }
 

@@ -1,6 +1,6 @@
 import { Sealer } from './crypto';
 import type { Env } from './env';
-import { PayPal, type OrderLine, type PayLink, orderTotalCents } from './paypal';
+import { PayPal, PayPalError, type OrderLine, type PayLink, orderTotalCents } from './paypal';
 
 // ---- types -------------------------------------------------------------------------
 
@@ -548,7 +548,7 @@ export class Store {
     const key = opts.idempotencyKey?.trim().slice(0, 64) || null;
     if (key) {
       const r = await this.db.prepare('SELECT * FROM orders WHERE shop_id = ? AND idempotency_key = ?').bind(shop.id, key).first<Row>();
-      if (r) return orderFrom(r);
+      if (r) return sameCartOrThrow(orderFrom(r), cart);
     }
     const pp = await this.paypalFor(shop);
     if (!pp) throw new UserError(`${shop.name} has not connected PayPal yet, so it cannot take orders.`);
@@ -595,7 +595,7 @@ export class Store {
       // Two retries with the same key raced: the other one's order stands, this PayPal order is simply never approved.
       if (key && /UNIQUE/i.test(String(e))) {
         const r = await this.db.prepare('SELECT * FROM orders WHERE shop_id = ? AND idempotency_key = ?').bind(shop.id, key).first<Row>();
-        if (r) return orderFrom(r);
+        if (r) return sameCartOrThrow(orderFrom(r), cart);
       }
       throw e;
     }
@@ -639,36 +639,34 @@ export class Store {
   }
 
   /**
-   * Takes this order's stock once. Each product row only goes down if enough is left; if any line falls short,
-   * what was taken is put back and the order cannot be paid. Returns true when the order may be captured
-   * (including when another request already took the stock for it).
+   * Takes this order's stock once, atomically: the order's claim (a random token in stock_taken) and every product
+   * decrement are one batch, and a trigger aborts the batch if any product would go below zero. So stock_taken != 0
+   * always means the stock really was taken, and a request that loses the claim to another may safely capture.
+   * Returns false when the stock is not there (the order must not be captured).
    */
   private async takeStock(order: Order): Promise<boolean> {
-    const claim = await this.db.prepare('UPDATE orders SET stock_taken = 1 WHERE id = ? AND stock_taken = 0').bind(order.id).run();
-    if (!claim.meta.changes) return true;
     const need = new Map<string, number>();
     for (const i of order.items) need.set(i.product_id, (need.get(i.product_id) ?? 0) + i.quantity);
-    const ids = [...need.keys()];
-    const results = await this.db.batch(
-      ids.map((id) => this.db.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock IS NOT NULL AND stock >= ?').bind(need.get(id), id, need.get(id))),
-    );
-    const short: string[] = [];
-    const taken: string[] = [];
-    for (let k = 0; k < ids.length; k++) (results[k].meta.changes ? taken : short).push(ids[k]);
-    if (!short.length) return true;
-    // A row that did not change is either untracked (fine) or short (not fine).
-    const tracked = await all<{ id: string }>(this.db.prepare(`SELECT id FROM products WHERE id IN (${short.map(() => '?').join(',')}) AND stock IS NOT NULL`).bind(...short));
-    if (!tracked.length) return true;
-    await this.db.batch([
-      ...taken.map((id) => this.db.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(need.get(id), id)),
-      this.db.prepare('UPDATE orders SET stock_taken = 0 WHERE id = ?').bind(order.id),
-    ]);
-    return false;
+    const token = 1 + Math.floor(Math.random() * 2_000_000_000);
+    try {
+      await this.db.batch([
+        this.db.prepare("UPDATE orders SET stock_taken = ? WHERE id = ? AND stock_taken = 0 AND status IN ('created', 'pending')").bind(token, order.id),
+        ...[...need].map(([id, qty]) =>
+          this.db.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock IS NOT NULL AND EXISTS (SELECT 1 FROM orders WHERE id = ? AND stock_taken = ?)').bind(qty, id, order.id, token),
+        ),
+      ]);
+    } catch (e) {
+      if (/out_of_stock/.test(String(e))) return false;
+      throw e;
+    }
+    const now = await this.db.prepare('SELECT stock_taken, status FROM orders WHERE id = ?').bind(order.id).first<{ stock_taken: number; status: string }>();
+    // Ours or another request's claim: either way the stock is held for this order. Cancelled meanwhile: don't capture.
+    return Boolean(now?.stock_taken) && (now?.status === 'created' || now?.status === 'pending');
   }
 
   /** Puts an order's stock back (cancelled before payment, or refunded before it shipped). Runs once per order. */
   private async releaseStock(orderId: string): Promise<void> {
-    const claim = await this.db.prepare('UPDATE orders SET stock_taken = 0 WHERE id = ? AND stock_taken = 1').bind(orderId).run();
+    const claim = await this.db.prepare('UPDATE orders SET stock_taken = 0 WHERE id = ? AND stock_taken != 0').bind(orderId).run();
     if (!claim.meta.changes) return;
     const order = await this.order(orderId);
     if (!order) return;
@@ -678,10 +676,14 @@ export class Store {
   private async markPaid(order: Order, o: { captureId?: string; buyerName?: string; buyerEmail?: string; shipTo?: string }): Promise<Order> {
     // Captured before stock was reserved (an order captured in PayPal directly, or by an older deploy): take it now.
     if (!order.stockTaken) {
-      const claim = await this.db.prepare('UPDATE orders SET stock_taken = 1 WHERE id = ? AND stock_taken = 0').bind(order.id).run();
-      if (claim.meta.changes) {
-        await this.db.batch(order.items.map((i) => this.db.prepare('UPDATE products SET stock = MAX(stock - ?, 0) WHERE id = ? AND stock IS NOT NULL').bind(i.quantity, i.product_id)));
-      }
+      // The money is already in, so this takes what is there (never below zero) instead of refusing.
+      const token = 1 + Math.floor(Math.random() * 2_000_000_000);
+      await this.db.batch([
+        this.db.prepare('UPDATE orders SET stock_taken = ? WHERE id = ? AND stock_taken = 0').bind(token, order.id),
+        ...order.items.map((i) =>
+          this.db.prepare('UPDATE products SET stock = MAX(stock - ?, 0) WHERE id = ? AND stock IS NOT NULL AND EXISTS (SELECT 1 FROM orders WHERE id = ? AND stock_taken = ?)').bind(i.quantity, i.product_id, order.id, token),
+        ),
+      ]);
     }
     await this.db
       .prepare("UPDATE orders SET status = 'paid', capture_id = ?, buyer_name = ?, buyer_email = ?, ship_to = ?, paid_at = ? WHERE id = ? AND status IN ('created', 'pending')")
@@ -699,10 +701,30 @@ export class Store {
     return (await this.order(order.id)) as Order;
   }
 
-  /** Abandoned checkouts: orders nobody approved within `maxAgeMs` are cancelled (PayPal voids them after 3 hours anyway). */
-  async expireStaleOrders(shopId: string, maxAgeMs = 6 * 3_600_000): Promise<number> {
-    const res = await this.db.prepare("UPDATE orders SET status = 'cancelled' WHERE shop_id = ? AND status = 'created' AND stock_taken = 0 AND created_at < ?").bind(shopId, Date.now() - maxAgeMs).run();
+  /**
+   * Abandoned checkouts: orders nobody approved within `maxAgeMs` are cancelled (PayPal voids them after 3 hours anyway).
+   * An old order still holding stock (a request died between reserving and capturing, or PayPal answered with a status
+   * we don't know) is re-checked with PayPal, a few per call: captured → paid; gone or voided → cancelled and restocked.
+   */
+  async expireStaleOrders(shop: Shop, maxAgeMs = 6 * 3_600_000): Promise<number> {
+    const cutoff = Date.now() - maxAgeMs;
+    const res = await this.db.prepare("UPDATE orders SET status = 'cancelled' WHERE shop_id = ? AND status = 'created' AND stock_taken = 0 AND created_at < ?").bind(shop.id, cutoff).run();
+    const held = await all<Row>(this.db.prepare("SELECT * FROM orders WHERE shop_id = ? AND status = 'created' AND stock_taken != 0 AND created_at < ? LIMIT 3").bind(shop.id, cutoff));
+    for (const r of held) {
+      const o = orderFrom(r);
+      try {
+        const after = await this.sync(shop, o);
+        if (after.status === 'created') await this.markCancelled(o.id, 'Never completed at PayPal; the stock was put back.');
+      } catch (e) {
+        if (e instanceof PayPalError && e.status === 404) await this.markCancelled(o.id, 'PayPal no longer has this order; the stock was put back.');
+      }
+    }
     return res.meta.changes ?? 0;
+  }
+
+  /** The buyer pressed Cancel at PayPal: only an order that never got as far as reserving stock or capturing. */
+  async cancelAbandoned(orderId: string): Promise<void> {
+    await this.db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'created' AND stock_taken = 0").bind(orderId).run();
   }
 
   async markShipped(shop: Shop, order: Order, carrier: string, trackingNumber: string): Promise<string | null> {
@@ -739,8 +761,10 @@ export class Store {
       // The money is in the merchant's own PayPal; only they can send it back.
       return { allowed: false, reason: `The payment is in ${shop.name}'s PayPal account, so the refund is issued there (PayPal → Activity → this payment → Refund). The request was passed to the merchant.` };
     }
-    await pp.refundCapture(order.captureId, reason || `Refund from ${shop.name}`, amount === left && !order.refundedCents ? undefined : { cents: amount, currency: order.currency, seq: order.refundedCents });
-    await this.recordRefund(order.id, amount, reason || null);
+    const r = await pp.refundCapture(order.captureId, reason || `Refund from ${shop.name}`, amount === left && !order.refundedCents ? undefined : { cents: amount, currency: order.currency, seq: order.refundedCents });
+    // PayPal's running total, not "+amount": the webhook for this same refund may already have been counted,
+    // and a double-submitted refund is deduplicated by PayPal into one.
+    await this.applyRefund(order.id, { refundId: r.id, cents: amount, totalRefundedCents: r.totalRefundedCents }, reason || null);
     return amount < left ? { allowed: true, reason: `Refunded ${fmt(amount, order.currency)} of ${fmt(order.totalCents, order.currency)}.` } : decision;
   }
 
@@ -761,6 +785,26 @@ export class Store {
     if (o?.status === 'refunded' && !o.shippedAt) await this.releaseStock(orderId);
   }
 
+  /**
+   * One refund PayPal made, from our own call or a webhook. With PayPal's running total it is set idempotently;
+   * without one, the refund id is claimed first so the same refund is never added twice.
+   */
+  async applyRefund(orderId: string, r: { refundId?: string; cents: number; totalRefundedCents?: number }, reason: string | null): Promise<void> {
+    if (r.totalRefundedCents !== undefined) return this.syncRefundTotal(orderId, r.totalRefundedCents, reason);
+    if (r.refundId && !(await this.claimKey(`refund:${r.refundId}`))) return;
+    await this.recordRefund(orderId, r.cents, reason);
+  }
+
+  /** Records `key` once; true for the caller that recorded it. */
+  async claimKey(key: string): Promise<boolean> {
+    const res = await this.db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING').bind(key, String(Date.now())).run();
+    return Boolean(res.meta.changes);
+  }
+
+  async releaseKey(key: string): Promise<void> {
+    await this.db.prepare('DELETE FROM kv WHERE key = ?').bind(key).run();
+  }
+
   /** PayPal says the refund total on this capture is now `totalRefundedCents` (webhooks carry the running total). */
   async syncRefundTotal(orderId: string, totalRefundedCents: number, reason: string | null): Promise<void> {
     const o = await this.order(orderId);
@@ -777,6 +821,15 @@ export class Store {
     const res = await this.db.prepare("UPDATE orders SET status = 'cancelled', refund_reason = COALESCE(?, refund_reason) WHERE id = ? AND status IN ('created', 'pending')").bind(reason, orderId).run();
     if (res.meta.changes) await this.releaseStock(orderId);
   }
+}
+
+/** A retried buy must be the same purchase: same products and quantities, and an order that is still open. */
+function sameCartOrThrow(existing: Order, cart: { productId: string; quantity?: number }[]): Order {
+  const sig = (lines: [string, number][]) => lines.map(([id, q]) => `${id}x${q}`).sort().join(',');
+  const asked = sig(cart.slice(0, 20).map((l) => [l.productId, Math.max(1, Math.min(99, Math.floor(Number(l.quantity ?? 1)) || 1))]));
+  if (asked !== sig(existing.items.map((i) => [i.product_id, i.quantity]))) throw new UserError('That idempotency_key was already used for a different cart. Use a new key for a new purchase.');
+  if (existing.status === 'cancelled') throw new UserError(`The order made with that idempotency_key (${existing.id}) was cancelled. Use a new key to try again.`);
+  return existing;
 }
 
 /** A mistake the caller (agent, shopper, merchant) can fix; shown to them verbatim. */

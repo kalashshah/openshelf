@@ -80,8 +80,8 @@ paypal-server-sdk, paypal-orders-v2, paypal-payment-links, paypal-invoicing, log
 ## Pre-submit checklist
 
 - [ ] `pnpm test && pnpm typecheck && pnpm build` pass.
-- [ ] `pnpm run db:remote` applied (includes `0006_orders_safety.sql`), then `pnpm run deploy`.
-- [ ] Reconnect each merchant PayPal app once (or wait for the next connect) so existing webhooks pick up the new events: CAPTURE.PENDING, DENIED and REVERSED. `registerWebhook` patches them automatically.
+- [ ] `pnpm run db:remote` applied (includes `0006_orders_safety.sql` and `0007_stock_guard.sql`), then `pnpm run deploy`.
+- [ ] Open the dashboard once after deploying: existing webhooks (each merchant app and the demo app) are patched to the new events (CAPTURE.PENDING, DENIED, REVERSED) on first load.
 - [ ] On production: Try the demo store, ask a question, buy with the sandbox card, add tracking, refund part of the order.
 - [ ] Claude custom connector at `https://openshelf.keronlabs.com/mcp`: run the judge prompt from the README.
 - [ ] Video uploaded (public or unlisted), repository link and testing instructions pasted into Devpost.

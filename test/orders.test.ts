@@ -13,6 +13,7 @@ async function setup(opts: { stock?: number | null; captureStatus?: string } = {
   const product = await store.saveProduct(shop.id, { name: 'Gel Moisturizer', priceCents: 2400, stock: opts.stock === undefined ? 1 : opts.stock });
   const state = new Map<string, string>();
   let n = 0;
+  let refunded = 0;
   const pp = {
     createOrder: vi.fn(async (): Promise<PayPalOrder> => {
       const id = `PP${++n}`;
@@ -27,7 +28,11 @@ async function setup(opts: { stock?: number | null; captureStatus?: string } = {
       state.set(id, 'COMPLETED');
       return { id, status: 'COMPLETED', captureId: `CAP-${id}`, captureStatus: opts.captureStatus ?? 'COMPLETED', buyerName: 'Ana' };
     }),
-    refundCapture: vi.fn(async () => ({ id: 'R1', status: 'COMPLETED' })),
+    // Like PayPal: each refund has its own id, and the response carries the capture's running refund total.
+    refundCapture: vi.fn(async (_capture: string, _note: string, partial?: { cents: number }) => {
+      refunded += partial?.cents ?? 4800 - refunded;
+      return { id: `R${++n}`, status: 'COMPLETED', totalRefundedCents: refunded };
+    }),
   };
   store.paypalFor = async () => pp as unknown as PayPal;
   store.paymentMode = () => 'app';
@@ -72,12 +77,20 @@ describe('checkout and payment', () => {
     expect(pp.createOrder).not.toHaveBeenCalled();
   });
 
-  it('returns the same order for a retried buy with the same idempotency key', async () => {
+  it('returns the same order for a retried buy with the same idempotency key, and refuses a different cart', async () => {
     const { store, shop, product, pp } = await setup({ stock: null });
     const a = await store.checkout(shop, [{ productId: product.id }], 'agent', { idempotencyKey: 'k1' });
     const b = await store.checkout(shop, [{ productId: product.id }], 'agent', { idempotencyKey: 'k1' });
     expect(b.id).toBe(a.id);
     expect(pp.createOrder).toHaveBeenCalledTimes(1);
+    await expect(store.checkout(shop, [{ productId: product.id, quantity: 3 }], 'agent', { idempotencyKey: 'k1' })).rejects.toThrow(/different cart/);
+  });
+
+  it('never lets stock go below zero, even when a sale is forced through', async () => {
+    const { store, product, stock } = await setup({ stock: 1 });
+    const env = (store as unknown as { env: { DB: D1Database } }).env;
+    await expect(env.DB.prepare('UPDATE products SET stock = stock - 2 WHERE id = ?').bind(product.id).run()).rejects.toThrow(/out_of_stock/);
+    expect(await stock()).toBe(1);
   });
 
   it('keeps a PENDING capture out of paid until PayPal clears it', async () => {
@@ -117,6 +130,27 @@ describe('refunds', () => {
     await store.refund(shop, o, 'rest', 'merchant');
     o = (await store.order(order.id))!;
     expect([o.status, o.refundedCents]).toEqual(['refunded', 4800]);
+  });
+
+  it('counts a refund once when our call and PayPal’s webhook both report it', async () => {
+    const { store, shop, order } = await paidOrder();
+    // The merchant refunds 2400; PayPal's webhook for that refund (running total 2400) is handled before our call returns.
+    const snapshot = order;
+    await store.applyRefund(order.id, { refundId: 'R1', cents: 2400, totalRefundedCents: 2400 }, 'webhook');
+    await store.refund(shop, snapshot, 'one jar broke', 'merchant', 2400);
+    // PayPal's running total after our call is still 2400: one refund, counted once (not 4800).
+    expect((await store.order(order.id))!.refundedCents).toBe(2400);
+    // A webhook without a running total is deduplicated by refund id.
+    const t = await paidOrder();
+    await t.store.applyRefund(t.order.id, { refundId: 'X', cents: 1000 }, 'w');
+    await t.store.applyRefund(t.order.id, { refundId: 'X', cents: 1000 }, 'w');
+    expect((await t.store.order(t.order.id))!.refundedCents).toBe(1000);
+  });
+
+  it('the PayPal cancel page cannot cancel an order that is already paying', async () => {
+    const { store, order } = await paidOrder();
+    await store.cancelAbandoned(order.id);
+    expect((await store.order(order.id))!.status).toBe('paid');
   });
 
   it('refuses a refund above what is left', async () => {

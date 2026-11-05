@@ -12,7 +12,8 @@ export default async function CheckoutCancel({ searchParams }: { searchParams: P
   const found = await store.orderById(o ?? '');
   // PayPal sends the buyer back with the order's own token; without it this is just someone with an order id.
   const order = found && token && token === found.paypalOrderId ? found : null;
-  if (order) await store.markCancelled(order.id);
+  // Only an order that never started paying: one already capturing or clearing finishes through sync.
+  if (order) await store.cancelAbandoned(order.id);
   const shop = order ? await store.shopById(order.shopId) : null;
   return (
     <Centered

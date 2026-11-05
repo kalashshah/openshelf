@@ -176,7 +176,7 @@ export class PayPal {
    * Refunds a capture: all of what is left, or `partial.cents`. The request id includes how much was refunded
    * before, so a retry of the same refund is deduplicated by PayPal while a second partial refund is not.
    */
-  async refundCapture(captureId: string, note: string, partial?: { cents: number; currency: string; seq: number }): Promise<{ id: string; status: string }> {
+  async refundCapture(captureId: string, note: string, partial?: { cents: number; currency: string; seq: number }): Promise<{ id: string; status: string; totalRefundedCents?: number }> {
     const res = await sdkCall('refund the payment', () =>
       this.sdk.payments.refundCapturedPayment({
         captureId,
@@ -185,7 +185,8 @@ export class PayPal {
         body: { noteToPayer: note.slice(0, 255), ...(partial ? { amount: { currencyCode: partial.currency, value: money(partial.cents) } } : {}) },
       }),
     );
-    return { id: res.result.id ?? '', status: res.result.status ?? '' };
+    const total = res.result.sellerPayableBreakdown?.totalRefundedAmount?.value;
+    return { id: res.result.id ?? '', status: res.result.status ?? '', totalRefundedCents: total === undefined ? undefined : toCents(total) };
   }
 
   async addTracking(orderId: string, captureId: string, trackingNumber: string, carrier: string): Promise<void> {
@@ -278,6 +279,16 @@ export class PayPal {
     return ((await res.json()) as { verification_status?: string }).verification_status === 'SUCCESS';
   }
 
+  /** Brings an existing webhook on `url` up to the current event list; never creates one. Returns whether it was patched. */
+  async upgradeWebhook(url: string): Promise<boolean> {
+    const existing = await this.api<{ webhooks?: { id: string; url: string; event_types?: { name: string }[] }[] }>('GET', '/v1/notifications/webhooks');
+    const found = existing.webhooks?.find((w) => w.url === url);
+    const has = new Set((found?.event_types ?? []).map((e) => e.name));
+    if (!found || has.has('*') || WEBHOOK_EVENTS.every((e) => has.has(e))) return false;
+    await this.api('PATCH', `/v1/notifications/webhooks/${encodeURIComponent(found.id)}`, [{ op: 'replace', path: '/event_types', value: WEBHOOK_EVENTS.map((name) => ({ name })) }]);
+    return true;
+  }
+
   async registerWebhook(url: string): Promise<string> {
     const existing = await this.api<{ webhooks?: { id: string; url: string; event_types?: { name: string }[] }[] }>('GET', '/v1/notifications/webhooks');
     const found = existing.webhooks?.find((w) => w.url === url);
@@ -285,7 +296,9 @@ export class PayPal {
       // Registered by an older version with fewer events: bring the subscription up to date (best effort).
       const has = new Set((found.event_types ?? []).map((e) => e.name));
       if (!has.has('*') && WEBHOOK_EVENTS.some((e) => !has.has(e))) {
-        await this.api('PATCH', `/v1/notifications/webhooks/${encodeURIComponent(found.id)}`, [{ op: 'replace', path: '/event_types', value: WEBHOOK_EVENTS.map((name) => ({ name })) }]).catch(() => {});
+        await this.api('PATCH', `/v1/notifications/webhooks/${encodeURIComponent(found.id)}`, [{ op: 'replace', path: '/event_types', value: WEBHOOK_EVENTS.map((name) => ({ name })) }]).catch((e) =>
+          console.error('webhook_upgrade_failed', e instanceof Error ? e.message : String(e)),
+        );
       }
       return found.id;
     }

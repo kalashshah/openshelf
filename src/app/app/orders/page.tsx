@@ -27,7 +27,7 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
   const { store, shop, user, canTakePayments } = await dashboard();
   const { n, e } = await searchParams;
   // Checkouts nobody approved are cancelled after a few hours, so the list shows real orders.
-  await store.expireStaleOrders(shop.id);
+  await store.expireStaleOrders(shop);
   const orders = await store.orders(shop.id, 300);
   return (
     <>

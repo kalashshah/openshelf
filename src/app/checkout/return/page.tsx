@@ -30,6 +30,7 @@ export default async function CheckoutReturn({ searchParams }: { searchParams: P
   if (order?.status === 'pending') {
     return (
       <Centered icon={<Clock className="size-5 text-warning-base" />} title="Payment is clearing" actions={back}>
+        {shop && <ClearCart slug={shop.slug} />}
         PayPal accepted order <span className="font-medium text-ink">{order.id}</span> and is still clearing the payment. {shop?.name ?? 'The store'} will prepare it as soon as PayPal confirms.
       </Centered>
     );
