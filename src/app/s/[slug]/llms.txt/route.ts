@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       '## How to buy here (no setup needed)',
       'Pick the product and options that fit what the person asked for, then give them its checkout link below. Add &qty=2 (or ?qty=2 if the link has no options) for more than one.',
       'The person opens it, checks the order and pays in PayPal. Nothing is charged until they approve. The link is for the person: you do not need to open it.',
-      `Tools instead: the MCP server at ${env.PUBLIC_URL}/s/${shop.slug}/mcp can answer questions the catalog does not (ask_store), place orders (buy), track them (order_status) and refund them (request_refund).`,
+      `Tools instead: the MCP server at ${env.PUBLIC_URL}/s/${shop.slug}/mcp can answer questions the catalog does not (ask_store, and check_question for the merchant's later answer), place orders with a spending cap and retry-safe idempotency key (buy with max_total and idempotency_key), track them (order_status) and refund them (request_refund).`,
       '## Checkout links',
       links.length ? links.join('\n') : '(nothing for sale right now)',
       '## Store details and catalog',
