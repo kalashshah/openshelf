@@ -21,14 +21,16 @@ async function upgradeWebhooks(store: Store, shop: Shop, publicUrl: string): Pro
     ['wh-events:v2:demo', async () => store.demoPayPal(), `${publicUrl}/webhooks/paypal/demo`],
   ];
   for (const [key, client, url] of jobs) {
-    if (await store.kvGet(key)) continue;
+    const last = await store.kvGet(key);
+    // Done (`ok:`), or failed under 10 minutes ago: don't add a PayPal round trip to every page load.
+    if (last && (last.startsWith('ok:') || Date.now() - Number(last.split(':')[1]) < 600_000)) continue;
     const pp = await client();
     if (!pp) continue;
     try {
       await pp.upgradeWebhook(url);
-      await store.kvSet(key, String(Date.now()));
+      await store.kvSet(key, `ok:${Date.now()}`);
     } catch (e) {
-      // Tried again on the next dashboard load.
+      await store.kvSet(key, `retry:${Date.now()}`);
       console.error('webhook_upgrade_failed', e instanceof Error ? e.message : String(e));
     }
   }
