@@ -314,9 +314,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                       <p className="truncate text-paragraph-xs text-text-sub-600">{f.o.items.map((i) => `${i.quantity} × ${i.name}${i.variant ? ` (${i.variant})` : ''}`).join(', ')}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
-                      <StatusBadge.Root status={f.o.status === 'refunded' || f.o.status === 'cancelled' ? 'failed' : f.o.status === 'created' ? 'pending' : 'completed'} variant="light">
+                      <StatusBadge.Root status={f.o.status === 'refunded' || f.o.status === 'cancelled' ? 'failed' : f.o.status === 'created' || f.o.status === 'pending' ? 'pending' : 'completed'} variant="light">
                         <StatusBadge.Dot />
-                        {f.o.status === 'created' ? 'Awaiting payment' : f.o.status.charAt(0).toUpperCase() + f.o.status.slice(1)}
+                        {f.o.status === 'created' ? 'Awaiting payment' : f.o.status === 'pending' ? 'Payment clearing' : f.o.status.charAt(0).toUpperCase() + f.o.status.slice(1)}
                       </StatusBadge.Root>
                       <span className="text-paragraph-xs text-text-soft-400">
                         {f.o.channel === 'agent' ? 'AI agent' : 'Store page'} · {when(f.o.createdAt)}

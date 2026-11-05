@@ -1,17 +1,42 @@
 import { getEnv } from '@/server/env';
-import { Store } from '@/server/store';
+import { toCents } from '@/server/paypal';
+import { Store, type Order } from '@/server/store';
+
+interface Money {
+  value?: string;
+  currency_code?: string;
+}
+interface WebhookEvent {
+  id?: string;
+  event_type?: string;
+  resource?: {
+    id?: string;
+    amount?: Money;
+    note_to_payer?: string;
+    links?: { rel: string; href: string }[];
+    supplementary_data?: { related_ids?: { order_id?: string; capture_id?: string } };
+    seller_payable_breakdown?: { total_refunded_amount?: Money };
+  };
+}
 
 /**
- * PayPal webhooks: complete sales whose buyer never came back to the return page, record refunds.
+ * PayPal webhooks: complete sales whose buyer never came back to the return page, follow captures that clear
+ * late or are denied, record refunds made in PayPal (partial ones too) and reversals.
  * /webhooks/paypal/demo = the demo app's webhook; /webhooks/paypal/app = every merchant app's.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ hook: string }> }) {
   const env = getEnv();
   const raw = await request.text();
-  const event = JSON.parse(raw) as { event_type?: string; resource?: { id?: string; supplementary_data?: { related_ids?: { order_id?: string } } } };
-  const orderId = event.event_type === 'CHECKOUT.ORDER.APPROVED' ? event.resource?.id : event.resource?.supplementary_data?.related_ids?.order_id;
+  let event: WebhookEvent;
+  try {
+    event = JSON.parse(raw) as WebhookEvent;
+  } catch {
+    return Response.json({ error: 'bad json' }, { status: 400 });
+  }
+  const type = event.event_type ?? '';
+  const r = event.resource ?? {};
   const store = new Store(env);
-  const order = orderId ? await store.order(orderId) : null;
+  const order = await findOrder(store, type, r);
   const shop = order ? await store.shopById(order.shopId) : null;
   // Not ours (Penny or another app on the same PayPal app): acknowledge so PayPal stops retrying.
   if (!order || !shop) return Response.json({ ok: true, ignored: true });
@@ -22,7 +47,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ hoo
   let verified = env.WEBHOOK_VERIFY === 'off';
   for (const pp of candidates) if (!verified && pp) verified = await pp.verifyWebhook(request.headers, raw);
   if (!verified) return Response.json({ error: 'bad signature' }, { status: 401 });
-  if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') await store.markRefunded(order.id, null);
-  else await store.sync(shop, order);
+  // PayPal retries until it gets a 2xx; a delivery already handled is acknowledged and skipped.
+  const seen = event.id ? `wh:${event.id}` : null;
+  if (seen && (await store.kvGet(seen))) return Response.json({ ok: true, duplicate: true });
+
+  if (type === 'PAYMENT.CAPTURE.REFUNDED') {
+    // Refund resources carry the running total on the capture; fall back to this refund's own amount.
+    const total = r.seller_payable_breakdown?.total_refunded_amount?.value;
+    if (total !== undefined) await store.syncRefundTotal(order.id, toCents(total), r.note_to_payer ?? 'Refunded in PayPal');
+    else await store.recordRefund(order.id, toCents(r.amount?.value), r.note_to_payer ?? 'Refunded in PayPal');
+  } else if (type === 'PAYMENT.CAPTURE.REVERSED') {
+    await store.markRefunded(order.id, 'Reversed by PayPal (a chargeback or payment reversal)');
+  } else {
+    await store.sync(shop, order);
+  }
+  if (seen) await store.kvSet(seen, String(Date.now()));
   return Response.json({ ok: true });
+}
+
+/** Order events name the PayPal order; capture events name it in related_ids; refunds link "up" to their capture. */
+async function findOrder(store: Store, type: string, r: NonNullable<WebhookEvent['resource']>): Promise<Order | null> {
+  if (type.startsWith('CHECKOUT.ORDER.')) return r.id ? store.order(r.id) : null;
+  const orderId = r.supplementary_data?.related_ids?.order_id;
+  if (orderId) {
+    const o = await store.order(orderId);
+    if (o) return o;
+  }
+  const captureId =
+    r.supplementary_data?.related_ids?.capture_id ??
+    r.links?.find((l) => l.rel === 'up' && /\/captures\//.test(l.href))?.href.split('/captures/')[1]?.split(/[/?]/)[0] ??
+    (type === 'PAYMENT.CAPTURE.REFUNDED' ? undefined : r.id);
+  return captureId ? store.orderByCapture(captureId) : null;
 }

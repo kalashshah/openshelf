@@ -28,7 +28,7 @@ export interface PayPalConfig {
 
 const HOSTS = { sandbox: 'https://api-m.sandbox.paypal.com', live: 'https://api-m.paypal.com' } as const;
 
-export const WEBHOOK_EVENTS = ['CHECKOUT.ORDER.APPROVED', 'PAYMENT.CAPTURE.COMPLETED', 'PAYMENT.CAPTURE.REFUNDED'];
+export const WEBHOOK_EVENTS = ['CHECKOUT.ORDER.APPROVED', 'PAYMENT.CAPTURE.COMPLETED', 'PAYMENT.CAPTURE.PENDING', 'PAYMENT.CAPTURE.DENIED', 'PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED'];
 
 // Access tokens per PayPal app, per isolate.
 const tokens = new Map<string, { token: string; exp: number }>();
@@ -75,7 +75,7 @@ export class PayPal {
   }
 
   private get tokenKey(): string {
-    return `${this.cfg.env}:${this.cfg.clientId}`;
+    return `${this.cfg.env}:${this.cfg.clientId}:${this.cfg.clientSecret.slice(-8)}`;
   }
 
   private async token(): Promise<string> {
@@ -172,9 +172,18 @@ export class PayPal {
     }
   }
 
-  async refundCapture(captureId: string, note: string): Promise<{ id: string; status: string }> {
+  /**
+   * Refunds a capture: all of what is left, or `partial.cents`. The request id includes how much was refunded
+   * before, so a retry of the same refund is deduplicated by PayPal while a second partial refund is not.
+   */
+  async refundCapture(captureId: string, note: string, partial?: { cents: number; currency: string; seq: number }): Promise<{ id: string; status: string }> {
     const res = await sdkCall('refund the payment', () =>
-      this.sdk.payments.refundCapturedPayment({ captureId, paypalRequestId: `ref-${captureId}`, prefer: 'return=representation', body: { noteToPayer: note.slice(0, 255) } }),
+      this.sdk.payments.refundCapturedPayment({
+        captureId,
+        paypalRequestId: partial ? `ref-${captureId}-${partial.seq}-${partial.cents}` : `ref-${captureId}`,
+        prefer: 'return=representation',
+        body: { noteToPayer: note.slice(0, 255), ...(partial ? { amount: { currencyCode: partial.currency, value: money(partial.cents) } } : {}) },
+      }),
     );
     return { id: res.result.id ?? '', status: res.result.status ?? '' };
   }
@@ -270,9 +279,16 @@ export class PayPal {
   }
 
   async registerWebhook(url: string): Promise<string> {
-    const existing = await this.api<{ webhooks?: { id: string; url: string }[] }>('GET', '/v1/notifications/webhooks');
+    const existing = await this.api<{ webhooks?: { id: string; url: string; event_types?: { name: string }[] }[] }>('GET', '/v1/notifications/webhooks');
     const found = existing.webhooks?.find((w) => w.url === url);
-    if (found) return found.id;
+    if (found) {
+      // Registered by an older version with fewer events: bring the subscription up to date (best effort).
+      const has = new Set((found.event_types ?? []).map((e) => e.name));
+      if (!has.has('*') && WEBHOOK_EVENTS.some((e) => !has.has(e))) {
+        await this.api('PATCH', `/v1/notifications/webhooks/${encodeURIComponent(found.id)}`, [{ op: 'replace', path: '/event_types', value: WEBHOOK_EVENTS.map((name) => ({ name })) }]).catch(() => {});
+      }
+      return found.id;
+    }
     const res = await this.api<{ id: string }>('POST', '/v1/notifications/webhooks', { url, event_types: WEBHOOK_EVENTS.map((name) => ({ name })) });
     return res.id;
   }
@@ -292,7 +308,8 @@ export class PayPalError extends Error {
 const sdks = new Map<string, { orders: OrdersController; payments: PaymentsController }>();
 
 function sdkFor(cfg: PayPalConfig): { orders: OrdersController; payments: PaymentsController } {
-  const key = `${cfg.env}:${cfg.clientId}`;
+  // The secret is part of the key so a rotated secret gets a fresh client instead of a stale cached one.
+  const key = `${cfg.env}:${cfg.clientId}:${cfg.clientSecret.slice(-8)}`;
   let s = sdks.get(key);
   if (!s) {
     const client = new Client({

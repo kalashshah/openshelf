@@ -1,4 +1,4 @@
-import { Bot, CircleCheck, MessageCircle, Sparkles, User } from 'lucide-react';
+import { Bot, CircleCheck, MessageCircle, Sparkles, Undo2, User, X } from 'lucide-react';
 import { EmptyPanel, PageBody, PageHeader, Rows, SectionCard } from '@/components/app/chrome';
 import { Notices } from '@/components/app/notices';
 import { Submit } from '@/components/app/submit';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import * as StatusBadge from '@/components/ui/status-badge';
 import { dashboard } from '@/server/page-context';
 import type { Question } from '@/server/store';
-import { answerQuestionAction } from '../actions';
+import { answerQuestionAction, dismissQuestionAction } from '../actions';
 
 function when(ms: number) {
   return new Date(ms).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
@@ -26,26 +26,34 @@ function Item({ q, product, answerable }: { q: Question; product?: string; answe
             <span className="text-paragraph-xs text-text-soft-400">{when(q.createdAt)}</span>
           </div>
           <p className="mt-0.5 text-paragraph-xs text-text-sub-600">
+            {q.kind === 'refund_request' ? 'Refund request · refund it under Orders if you agree · ' : ''}
             {q.asker === 'agent' ? 'From a shopper’s AI agent' : 'From your store page'}
             {product && <> · about {product}</>}
           </p>
         </div>
         <div className="max-w-[80ch] rounded-xl bg-bg-weak-50 px-3.5 py-2.5 ring-1 ring-inset ring-stroke-soft-200">
           <span className="flex items-center gap-1.5 text-label-xs text-text-sub-600">
-            <Sparkles className="size-3.5 text-primary-base" /> Store agent replied
+            <Sparkles className="size-3.5 text-primary-base" /> {q.kind === 'refund_request' ? 'Open Shelf replied' : 'Store agent replied'}
           </span>
           <p className="mt-1 text-paragraph-sm text-text-strong-950">{q.answer}</p>
         </div>
         {q.merchantAnswer && (
           <div className="max-w-[80ch] rounded-xl bg-success-lighter px-3.5 py-2.5">
             <span className="flex items-center gap-1.5 text-label-xs text-success-base">
-              <CircleCheck className="size-3.5" /> Your answer · the agent uses this now
+              <CircleCheck className="size-3.5" /> {q.kind === 'refund_request' ? 'Your note · private' : 'Your answer · the agent uses this now'}
             </span>
             <p className="mt-1 text-paragraph-sm text-text-strong-950">{q.merchantAnswer}</p>
           </div>
         )}
         {answerable ? (
-          <AnswerForm id={q.id} />
+          <div className="flex flex-col gap-2">
+            <AnswerForm id={q.id} refund={q.kind === 'refund_request'} />
+            <form action={dismissQuestionAction.bind(null, q.id)}>
+              <button type="submit" className="flex items-center gap-1 text-label-xs text-text-sub-600 hover:text-text-strong-950 hover:underline">
+                <X className="size-3.5" /> {q.kind === 'refund_request' ? 'Mark handled' : 'Dismiss without answering'}
+              </button>
+            </form>
+          </div>
         ) : (
           !q.merchantAnswer && (
             <details className="group">
@@ -61,12 +69,12 @@ function Item({ q, product, answerable }: { q: Question; product?: string; answe
   );
 }
 
-function AnswerForm({ id }: { id: string }) {
+function AnswerForm({ id, refund = false }: { id: string; refund?: boolean }) {
   return (
     <form action={answerQuestionAction.bind(null, id)} className="flex max-w-[80ch] flex-col gap-2 sm:flex-row">
-      <Input name="answer" required placeholder="Answer once; every future shopper’s agent gets it" />
+      <Input name="answer" required maxLength={4000} placeholder={refund ? 'A private note, e.g. “Refunded after the return arrived”' : 'Answer once; every future shopper’s agent gets it'} />
       <Submit pending="Saving…" className="shrink-0">
-        Teach the agent
+        {refund ? 'Save note' : 'Teach the agent'}
       </Submit>
     </form>
   );
@@ -77,8 +85,11 @@ export default async function Questions({ searchParams }: { searchParams: Promis
   const { n, e } = await searchParams;
   const [qs, products] = await Promise.all([store.questions(shop.id, 300), store.products(shop.id, { includeInactive: true })]);
   const names = new Map(products.map((p) => [p.id, p.name]));
-  const open = qs.filter((q) => !q.answered && !q.merchantAnswer);
-  const rest = qs.filter((q) => q.answered || q.merchantAnswer);
+  // Refund requests carry order ids and complaints: shown apart, and never taught to the store agent.
+  const refunds = qs.filter((q) => q.kind === 'refund_request' && !q.resolvedAt);
+  const asked = qs.filter((q) => q.kind === 'question');
+  const open = asked.filter((q) => !q.answered && !q.resolvedAt);
+  const rest = asked.filter((q) => q.answered || q.merchantAnswer);
   return (
     <>
       <PageHeader title="Questions" description="What shoppers’ agents and people asked your store. Answer what it didn’t know once, and it knows from then on." />
@@ -107,6 +118,22 @@ export default async function Questions({ searchParams }: { searchParams: Promis
             <EmptyPanel icon={<CircleCheck />} title="All caught up" description="New questions your store agent can’t answer will show up here." />
           )}
         </SectionCard>
+        {refunds.length > 0 && (
+          <SectionCard
+            icon={<Undo2 />}
+            tone="primary"
+            title="Refund requests"
+            description="Shoppers’ agents asked for money back on a shipped order or after your refund window. Refund under Orders, or mark it handled. These stay private."
+            bodyClassName="pb-0"
+            action={<span className="text-paragraph-xs text-text-sub-600">{refunds.length}</span>}
+          >
+            <Rows className="border-b-0">
+              {refunds.map((q) => (
+                <Item key={q.id} q={q} answerable />
+              ))}
+            </Rows>
+          </SectionCard>
+        )}
         <SectionCard
           icon={<CircleCheck />}
           title="Answered"

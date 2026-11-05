@@ -16,6 +16,7 @@ function when(ms: number) {
 
 const STATUS: Record<Order['status'], ['completed' | 'pending' | 'failed' | 'disabled', string]> = {
   created: ['pending', 'Waiting for PayPal'],
+  pending: ['pending', 'Payment clearing'],
   paid: ['completed', 'Paid'],
   shipped: ['completed', 'Shipped'],
   refunded: ['failed', 'Refunded'],
@@ -25,6 +26,8 @@ const STATUS: Record<Order['status'], ['completed' | 'pending' | 'failed' | 'dis
 export default async function Orders({ searchParams }: { searchParams: Promise<{ n?: string; e?: string }> }) {
   const { store, shop, user, canTakePayments } = await dashboard();
   const { n, e } = await searchParams;
+  // Checkouts nobody approved are cancelled after a few hours, so the list shows real orders.
+  await store.expireStaleOrders(shop.id);
   const orders = await store.orders(shop.id, 300);
   return (
     <>
@@ -79,7 +82,17 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
                             {o.carrier} {o.trackingNumber}
                           </span>
                         )}
-                        {o.refundReason && <span className="block">Refund: {o.refundReason}</span>}
+                        {o.refundedCents > 0 && o.status !== 'refunded' && (
+                          <span className="block">
+                            Refunded {fmt(o.refundedCents, o.currency)} of {fmt(o.totalCents, o.currency)}
+                          </span>
+                        )}
+                        {o.refundReason && (
+                          <span className="block">
+                            {o.status === 'cancelled' ? '' : 'Refund: '}
+                            {o.refundReason}
+                          </span>
+                        )}
                       </Table.Cell>
                       <Table.Cell>
                         <div className="flex min-w-[260px] flex-col gap-2">
@@ -93,13 +106,20 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
                             </form>
                           )}
                           {(o.status === 'paid' || o.status === 'shipped') && (
-                            <form action={refundOrderAction.bind(null, o.id)}>
+                            <form action={refundOrderAction.bind(null, o.id)} className="flex gap-1.5">
+                              <Input
+                                name="amount"
+                                inputMode="decimal"
+                                placeholder={`All ${fmt(o.totalCents - o.refundedCents, o.currency)}`}
+                                aria-label="Refund amount (leave empty to refund everything left)"
+                                className="h-8 w-32"
+                              />
                               <Submit variant="basic" size="xsmall" pending="Refunding…">
                                 <Undo2 className="size-4" /> Refund
                               </Submit>
                             </form>
                           )}
-                          {o.status === 'created' && (
+                          {(o.status === 'created' || o.status === 'pending') && (
                             <form action={syncOrderAction.bind(null, o.id)}>
                               <Submit variant="basic" size="xsmall" pending="Checking…">
                                 <RefreshCw className="size-4" /> Check PayPal

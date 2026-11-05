@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { askStore, shopContext } from './agent';
 import type { Env } from './env';
+import { productUrl } from './catalog-view';
 import { fmt, rank, Store, UserError, type Order, type Product, type Shop } from './store';
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
@@ -25,7 +26,9 @@ export const INSTRUCTIONS = `Open Shelf lets you shop independent stores on a pe
 1. Find products with search_products (or list_stores to browse).
 2. Before recommending, ask the store's own agent with ask_store: it knows the catalog, the merchant's notes and past answers, and it says so when it does not know.
 3. buy creates a PayPal order and returns approve_url. Give that link to the person; they log in to PayPal and approve, so nothing is charged without them.
-4. After they approve, call order_status to confirm payment and later to get tracking. request_refund applies the store's refund policy.`;
+   Pass max_total (the most the person agreed to spend) so the order is refused rather than opened above it, and an idempotency_key so a retry never opens a second order.
+4. After they approve, call order_status to confirm payment and later to get tracking. request_refund applies the store's refund policy.
+5. When ask_store says the merchant has been asked, it returns question_id: call check_question later to get the merchant's answer.`;
 
 /** scope = one shop (its own /s/:slug/mcp) or null for the directory of every listed shop. */
 /** `limited(what)` = true when this caller is over its budget for a model call or an order. */
@@ -70,18 +73,20 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
         ? `Search ${scope.name}'s products by what the person needs (e.g. "moisturizer for oily skin"). Returns product ids, prices, options and stock.`
         : 'Search products across every store by what the person needs (e.g. "moisturizer for oily skin"). Returns product ids, prices, options and stock.',
       inputSchema: {
-        query: z.string().describe('What the person is looking for, in plain words'),
-        max_price: z.number().optional().describe('Upper price limit in the store currency'),
+        query: z.string().max(300).describe('What the person is looking for, in plain words'),
+        max_price: z.number().positive().optional().describe('Upper price limit in the store currency (any option at or under it counts)'),
+        in_stock_only: z.boolean().optional().describe('Leave out sold-out products (default true)'),
         ...(scope ? {} : { store: z.string().optional().describe('Limit to one store id from list_stores') }),
       },
     },
     (args) =>
       guard(async () => {
-        const a = args as { query: string; max_price?: number; store?: string };
+        const a = args as { query: string; max_price?: number; in_stock_only?: boolean; store?: string };
         const list = a.store ? [await shopFor(a.store)] : await shops();
         const pool: (Product & { shop: Shop; extra: string })[] = [];
         for (const s of list) for (const p of await store.products(s.id)) pool.push({ ...p, shop: s, extra: `${s.name} ${s.tagline} ${p.variants.map((v) => v.options.map((o) => o.label).join(' ')).join(' ')}` });
-        const affordable = a.max_price ? pool.filter((p) => p.priceCents <= a.max_price! * 100) : pool;
+        const available = a.in_stock_only === false ? pool : pool.filter((p) => p.stock !== 0);
+        const affordable = a.max_price ? available.filter((p) => cheapestCents(p) <= Math.round(a.max_price! * 100)) : available;
         const hits = rank(affordable, a.query, 12);
         return {
           results: hits.map((p) => compactProduct(env, p.shop, p)),
@@ -92,7 +97,7 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
 
   server.registerTool(
     'get_product',
-    { description: 'Full details of one product: description, every option with its price, stock, and the store it belongs to.', inputSchema: { product_id: z.string() } },
+    { description: 'Full details of one product: description, every option with its price, stock, and the store it belongs to.', inputSchema: { product_id: z.string().max(64) } },
     (args) =>
       guard(async () => {
         const { shop, product } = await productIn(args.product_id);
@@ -107,8 +112,8 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
         "Ask the store's own agent a question, like asking a shop assistant: suitability (\"does it work on oily skin?\"), ingredients, sizing, shipping, returns, comparisons between its products. It answers only from what the store has published and says when it does not know (that question goes to the merchant).",
       inputSchema: {
         ...(scope ? {} : { store: z.string().describe('Store id from list_stores or a search result') }),
-        question: z.string(),
-        product_id: z.string().optional().describe('The product the question is about, if any'),
+        question: z.string().min(1).max(1000),
+        product_id: z.string().max(64).optional().describe('The product the question is about, if any'),
       },
     },
     (args) =>
@@ -119,15 +124,34 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
         const [products, knowledge] = await Promise.all([store.products(shop.id), store.knowledge(shop.id)]);
         const product = a.product_id ? (products.find((p) => p.id === a.product_id) ?? null) : null;
         const out = await askStore(env, shopContext(shop, products, knowledge), a.question, product);
-        await store.recordQuestion({ shopId: shop.id, productId: product?.id, question: a.question, answer: out.answer, answered: out.answered, asker: 'agent' });
+        const q = await store.recordQuestion({ shopId: shop.id, productId: product?.id, question: a.question, answer: out.answer, answered: out.answered, asker: 'agent' });
         const recommended = products.filter((p) => out.product_ids.includes(p.id));
         return {
           store: shop.slug,
           answer: out.answer,
           answered: out.answered,
           recommended: recommended.map((p) => compactProduct(env, shop, p)),
-          ...(out.answered ? {} : { note: 'The store did not have this information; the merchant has been asked.' }),
+          ...(out.answered ? {} : { question_id: q.id, note: 'The store did not have this information; the merchant has been asked. Call check_question with question_id later for their answer.' }),
         };
+      }),
+  );
+
+  server.registerTool(
+    'check_question',
+    {
+      description: "Get the merchant's answer to a question the store agent could not answer (the question_id that ask_store returned).",
+      inputSchema: { question_id: z.string().max(64) },
+    },
+    (args) =>
+      guard(async () => {
+        const q = await store.question(args.question_id);
+        if (!q || q.kind !== 'question' || (scope && q.shopId !== scope.id)) throw new UserError(`No question ${args.question_id}.`);
+        const shop = await store.shopById(q.shopId);
+        return q.merchantAnswer
+          ? { question: q.question, answered: true, answer: q.merchantAnswer, store: shop?.slug }
+          : q.resolvedAt
+            ? { question: q.question, answered: false, note: 'The merchant closed this question without an answer.' }
+            : { question: q.question, answered: false, note: 'The merchant has not answered yet. Check again later.' };
       }),
   );
 
@@ -140,12 +164,15 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
         items: z
           .array(
             z.object({
-              product_id: z.string(),
-              options: z.record(z.string(), z.string()).optional().describe('Chosen option per variant, e.g. {"Size": "50 ml"}'),
+              product_id: z.string().max(64),
+              options: z.record(z.string().max(64), z.string().max(200)).optional().describe('Chosen option per variant, e.g. {"Size": "50 ml"}'),
               quantity: z.number().int().min(1).max(99).optional(),
             }),
           )
-          .min(1),
+          .min(1)
+          .max(20),
+        max_total: z.number().positive().optional().describe('The most the person agreed to spend, in the store currency. If the order would cost more, no order is opened.'),
+        idempotency_key: z.string().max(64).optional().describe('Any unique string for this purchase. Retrying with the same key returns the same order instead of opening another.'),
       },
     },
     (args) =>
@@ -156,6 +183,7 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
           first.shop,
           args.items.map((i) => ({ productId: i.product_id, options: i.options, quantity: i.quantity })),
           'agent',
+          { maxTotalCents: args.max_total === undefined ? undefined : Math.round(args.max_total * 100), idempotencyKey: args.idempotency_key },
         );
         return {
           order_id: order.id,
@@ -170,7 +198,7 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
 
   server.registerTool(
     'order_status',
-    { description: 'Where an order stands: waiting for approval, paid, shipped (with tracking), refunded.', inputSchema: { order_id: z.string() } },
+    { description: 'Where an order stands: waiting for approval, paid, shipped (with tracking), refunded.', inputSchema: { order_id: z.string().max(64) } },
     (args) =>
       guard(async () => {
         const found = await orderFor(args.order_id);
@@ -182,15 +210,16 @@ export function registerTools(server: McpServer, env: Env, scope: Shop | null, l
   server.registerTool(
     'request_refund',
     {
-      description: "Ask for a refund on a paid order. Inside the store's refund window it is refunded to the person's PayPal at once; otherwise the request goes to the merchant.",
-      inputSchema: { order_id: z.string(), reason: z.string() },
+      description:
+        "Ask for a refund on a paid order. Inside the store's refund window, and before it ships, it is refunded to the person's PayPal at once; otherwise (shipped, or past the window) the request goes to the merchant.",
+      inputSchema: { order_id: z.string().max(64), reason: z.string().min(1).max(1000) },
     },
     (args) =>
       guard(async () => {
         const { shop, order } = await orderFor(args.order_id);
         const decision = await store.refund(shop, await store.sync(shop, order), args.reason, 'shopper');
         if (!decision.allowed) {
-          await store.recordQuestion({ shopId: shop.id, question: `Refund request for order ${order.id}: ${args.reason}`, answer: decision.reason, answered: false, asker: 'agent' });
+          await store.recordQuestion({ shopId: shop.id, question: `Refund request for order ${order.id}: ${args.reason}`, answer: decision.reason, answered: false, asker: 'agent', kind: 'refund_request', orderId: order.id });
         }
         return { refunded: decision.allowed, detail: decision.reason, order: describeOrder((await store.order(order.id)) as Order) };
       }),
@@ -210,15 +239,27 @@ function compactProduct(env: Env, shop: Shop, p: Product) {
     elsewhere: p.market ? `${fmt(p.market.minCents, shop.currency)}${p.market.maxCents !== p.market.minCents ? `–${fmt(p.market.maxCents, shop.currency)}` : ''} at ${p.market.retailers} other stores (Channel3)` : undefined,
     summary: p.description.slice(0, 220) || undefined,
     image: p.imageUrl ?? undefined,
-    page: `${env.PUBLIC_URL}/s/${shop.slug}#${p.id}`,
+    page: productUrl(env.PUBLIC_URL, shop, p),
   };
+}
+
+/** The lowest price a buyer can pay for the product: its base price or its cheapest priced option. */
+export function cheapestCents(p: Pick<Product, 'priceCents' | 'variants'>): number {
+  const priced = p.variants.flatMap((v) => v.options.flatMap((o) => (o.price_cents === undefined ? [] : [o.price_cents])));
+  return priced.length ? Math.min(p.priceCents, ...priced) : p.priceCents;
 }
 
 export function describeOrder(o: Order) {
   const status =
     o.status === 'created'
       ? 'waiting for the person to approve in PayPal'
-      : o.status === 'paid'
+      : o.status === 'pending'
+        ? 'approved; PayPal is still clearing the payment'
+        : o.status === 'cancelled'
+          ? 'cancelled; nobody was charged'
+          : o.status === 'refunded'
+            ? 'refunded'
+            : o.status === 'paid'
         ? 'paid; the store is preparing it'
         : o.status === 'shipped'
           ? 'shipped'
@@ -232,6 +273,7 @@ export function describeOrder(o: Order) {
     // Country only: the order id is all a caller needs, so the street address stays with the merchant.
     ...(o.shipTo ? { ships_to: o.shipTo.split(',').pop()?.trim() } : {}),
     ...(o.trackingNumber ? { tracking: `${o.carrier ?? ''} ${o.trackingNumber}`.trim() } : {}),
-    ...(o.refundReason ? { refund_reason: o.refundReason } : {}),
+    ...(o.refundedCents && o.status !== 'refunded' ? { refunded: `${fmt(o.refundedCents, o.currency)} of ${fmt(o.totalCents, o.currency)}` } : {}),
+    ...(o.refundReason ? { [o.status === 'cancelled' ? 'note' : 'refund_reason']: o.refundReason } : {}),
   };
 }

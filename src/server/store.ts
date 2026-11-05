@@ -61,6 +61,9 @@ export interface Question {
   answered: boolean;
   asker: 'agent' | 'human';
   merchantAnswer: string | null;
+  /** 'refund_request' = a shopper asking for money back outside the window: inbox only, never store-agent knowledge. */
+  kind: 'question' | 'refund_request';
+  orderId: string | null;
   createdAt: number;
   resolvedAt: number | null;
 }
@@ -81,7 +84,8 @@ export interface Order {
   items: OrderItem[];
   totalCents: number;
   currency: string;
-  status: 'created' | 'paid' | 'shipped' | 'refunded' | 'cancelled';
+  /** created → (pending: PayPal is still clearing the capture) → paid → shipped → refunded | cancelled */
+  status: 'created' | 'pending' | 'paid' | 'shipped' | 'refunded' | 'cancelled';
   channel: 'agent' | 'web';
   approveUrl: string;
   captureId: string | null;
@@ -91,6 +95,9 @@ export interface Order {
   carrier: string | null;
   trackingNumber: string | null;
   refundReason: string | null;
+  /** Refunded so far; below totalCents while only part of the order has been refunded. */
+  refundedCents: number;
+  stockTaken: boolean;
   createdAt: number;
   paidAt: number | null;
   shippedAt: number | null;
@@ -166,6 +173,8 @@ function questionFrom(r: Row): Question {
     answered: Boolean(r.answered),
     asker: r.asker === 'human' ? 'human' : 'agent',
     merchantAnswer: s(r.merchant_answer),
+    kind: r.kind === 'refund_request' ? 'refund_request' : 'question',
+    orderId: s(r.order_id),
     createdAt: Number(r.created_at),
     resolvedAt: n(r.resolved_at),
   };
@@ -189,6 +198,8 @@ function orderFrom(r: Row): Order {
     carrier: s(r.carrier),
     trackingNumber: s(r.tracking_number),
     refundReason: s(r.refund_reason),
+    refundedCents: Number(r.refunded_cents ?? 0),
+    stockTaken: Boolean(r.stock_taken),
     createdAt: Number(r.created_at),
     paidAt: n(r.paid_at),
     shippedAt: n(r.shipped_at),
@@ -422,11 +433,17 @@ export class Store {
   }
 
   /** Payment Links → products. Re-importing updates name/price/variants but keeps the merchant's image, stock and edits to the description. */
-  async importPayLinks(shop: Shop, links: PayLink[]): Promise<{ added: number; updated: number }> {
+  async importPayLinks(shop: Shop, links: PayLink[]): Promise<{ added: number; updated: number; skipped: string[] }> {
     const existing = new Map((await this.products(shop.id, { includeInactive: true })).filter((p) => p.paypalLinkId).map((p) => [p.paypalLinkId as string, p]));
     let added = 0;
     let updated = 0;
+    const skipped: string[] = [];
     for (const l of links) {
+      // A store has one currency; a EUR link imported into a USD store would sell at the same number in dollars.
+      if (l.currency.toUpperCase() !== shop.currency.toUpperCase()) {
+        skipped.push(`${l.name} (${l.currency})`);
+        continue;
+      }
       const prev = existing.get(l.id);
       await this.saveProduct(shop.id, {
         ...(prev ?? {}),
@@ -443,18 +460,38 @@ export class Store {
       });
       prev ? updated++ : added++;
     }
-    return { added, updated };
+    return { added, updated, skipped };
   }
 
   // ---- questions ---------------------------------------------------------------------
 
-  async recordQuestion(q: { shopId: string; productId?: string | null; question: string; answer: string; answered: boolean; asker: 'agent' | 'human' }): Promise<Question> {
+  async recordQuestion(q: {
+    shopId: string;
+    productId?: string | null;
+    question: string;
+    answer: string;
+    answered: boolean;
+    asker: 'agent' | 'human';
+    kind?: Question['kind'];
+    orderId?: string | null;
+  }): Promise<Question> {
     const id = shortId('q');
+    const kind = q.kind ?? 'question';
     await this.db
-      .prepare('INSERT INTO questions (id, shop_id, product_id, question, answer, answered, asker, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, q.shopId, q.productId ?? null, q.question.slice(0, 1000), q.answer, q.answered ? 1 : 0, q.asker, Date.now())
+      .prepare('INSERT INTO questions (id, shop_id, product_id, question, answer, answered, asker, kind, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, q.shopId, q.productId ?? null, q.question.slice(0, 1000), q.answer, q.answered ? 1 : 0, q.asker, kind, q.orderId ?? null, Date.now())
       .run();
-    return { id, shopId: q.shopId, productId: q.productId ?? null, question: q.question, answer: q.answer, answered: q.answered, asker: q.asker, merchantAnswer: null, createdAt: Date.now(), resolvedAt: null };
+    return { id, shopId: q.shopId, productId: q.productId ?? null, question: q.question, answer: q.answer, answered: q.answered, asker: q.asker, merchantAnswer: null, kind, orderId: q.orderId ?? null, createdAt: Date.now(), resolvedAt: null };
+  }
+
+  async question(id: string): Promise<Question | null> {
+    const r = await this.db.prepare('SELECT * FROM questions WHERE id = ?').bind(id).first<Row>();
+    return r ? questionFrom(r) : null;
+  }
+
+  /** Clears a question from the inbox without teaching the agent anything (spam, off-topic, handled elsewhere). */
+  async dismissQuestion(shopId: string, id: string): Promise<void> {
+    await this.db.prepare("UPDATE questions SET resolved_at = ?, merchant_answer = COALESCE(merchant_answer, '') WHERE id = ? AND shop_id = ?").bind(Date.now(), id, shopId).run();
   }
 
   async questions(shopId: string, limit = 100): Promise<Question[]> {
@@ -468,7 +505,9 @@ export class Store {
 
   async knowledge(shopId: string): Promise<{ question: string; answer: string }[]> {
     const rs = await all<Row>(
-      this.db.prepare('SELECT question, merchant_answer FROM questions WHERE shop_id = ? AND merchant_answer IS NOT NULL AND merchant_answer != "" ORDER BY resolved_at').bind(shopId),
+      this.db
+        .prepare("SELECT question, merchant_answer FROM questions WHERE shop_id = ? AND kind = 'question' AND merchant_answer IS NOT NULL AND merchant_answer != '' ORDER BY resolved_at")
+        .bind(shopId),
     );
     return rs.map((r) => ({ question: String(r.question), answer: String(r.merchant_answer) }));
   }
@@ -486,29 +525,58 @@ export class Store {
     return r ? orderFrom(r) : null;
   }
 
+  async orderByCapture(captureId: string): Promise<Order | null> {
+    const r = await this.db.prepare('SELECT * FROM orders WHERE capture_id = ?').bind(captureId).first<Row>();
+    return r ? orderFrom(r) : null;
+  }
+
   async orders(shopId: string, limit = 100): Promise<Order[]> {
     return (await all<Row>(this.db.prepare('SELECT * FROM orders WHERE shop_id = ? ORDER BY created_at DESC LIMIT ?').bind(shopId, limit))).map(orderFrom);
   }
 
-  /** Prices the cart from the catalog (never from the caller) and opens a PayPal order the buyer approves. */
-  async checkout(shop: Shop, cart: { productId: string; options?: Record<string, string>; quantity?: number }[], channel: 'agent' | 'web'): Promise<Order> {
+  /**
+   * Prices the cart from the catalog (never from the caller) and opens a PayPal order the buyer approves.
+   * `maxTotalCents` = the most the caller agreed to spend: the order is refused rather than opened above it.
+   * `idempotencyKey` = a retried call with the same key returns the order the first call made.
+   */
+  async checkout(
+    shop: Shop,
+    cart: { productId: string; options?: Record<string, string>; quantity?: number }[],
+    channel: 'agent' | 'web',
+    opts: { maxTotalCents?: number; idempotencyKey?: string } = {},
+  ): Promise<Order> {
+    const key = opts.idempotencyKey?.trim().slice(0, 64) || null;
+    if (key) {
+      const r = await this.db.prepare('SELECT * FROM orders WHERE shop_id = ? AND idempotency_key = ?').bind(shop.id, key).first<Row>();
+      if (r) return orderFrom(r);
+    }
     const pp = await this.paypalFor(shop);
     if (!pp) throw new UserError(`${shop.name} has not connected PayPal yet, so it cannot take orders.`);
     if (!cart.length) throw new UserError('The cart is empty.');
     const items: OrderItem[] = [];
+    const wanted = new Map<string, { product: Product; qty: number }>();
     for (const line of cart.slice(0, 20)) {
       const p = await this.product(line.productId);
       if (!p || p.shopId !== shop.id || !p.active) throw new UserError(`Product ${line.productId} is not sold by ${shop.name}.`);
       const asked = Number(line.quantity ?? 1);
       const qty = Number.isFinite(asked) ? Math.max(1, Math.min(99, Math.floor(asked))) : 1;
-      if (p.stock !== null && p.stock < qty) throw new UserError(p.stock === 0 ? `${p.name} is sold out.` : `Only ${p.stock} of ${p.name} left.`);
+      // Two lines of the same product (different options) draw on the same stock.
+      const w = wanted.get(p.id) ?? { product: p, qty: 0 };
+      w.qty += qty;
+      wanted.set(p.id, w);
       const priced = priceFor(p, line.options ?? {});
       items.push({ product_id: p.id, name: p.name, variant: priced.label, quantity: qty, unit_cents: priced.unitCents, ships: p.needsShipping });
+    }
+    for (const { product: p, qty } of wanted.values()) {
+      if (p.stock !== null && p.stock < qty) throw new UserError(p.stock === 0 ? `${p.name} is sold out.` : `Only ${p.stock} of ${p.name} left.`);
     }
     const id = shortId('o');
     const lines: OrderLine[] = items.map((i) => ({ name: i.variant ? `${i.name} (${i.variant})` : i.name, sku: i.product_id, quantity: i.quantity, unitCents: i.unit_cents, ships: i.ships !== false }));
     const total = orderTotalCents(lines);
     if (total <= 0) throw new UserError('The order total must be above zero.');
+    if (opts.maxTotalCents !== undefined && total > opts.maxTotalCents) {
+      throw new UserError(`The order comes to ${fmt(total, shop.currency)}, above the ${fmt(opts.maxTotalCents, shop.currency)} limit you set, so no order was opened.`);
+    }
     const pporder = await pp.createOrder({
       lines,
       currency: shop.currency,
@@ -518,39 +586,123 @@ export class Store {
       cancelUrl: `${this.env.PUBLIC_URL}/checkout/cancel?o=${id}`,
     });
     if (!pporder.approveUrl) throw new Error('PayPal did not return an approval link');
-    await this.db
-      .prepare('INSERT INTO orders (id, shop_id, paypal_order_id, items_json, total_cents, currency, channel, approve_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, shop.id, pporder.id, JSON.stringify(items), total, shop.currency, channel, pporder.approveUrl, Date.now())
-      .run();
+    try {
+      await this.db
+        .prepare('INSERT INTO orders (id, shop_id, paypal_order_id, items_json, total_cents, currency, channel, approve_url, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, shop.id, pporder.id, JSON.stringify(items), total, shop.currency, channel, pporder.approveUrl, key, Date.now())
+        .run();
+    } catch (e) {
+      // Two retries with the same key raced: the other one's order stands, this PayPal order is simply never approved.
+      if (key && /UNIQUE/i.test(String(e))) {
+        const r = await this.db.prepare('SELECT * FROM orders WHERE shop_id = ? AND idempotency_key = ?').bind(shop.id, key).first<Row>();
+        if (r) return orderFrom(r);
+      }
+      throw e;
+    }
     return (await this.order(id)) as Order;
   }
 
   /**
    * Brings an unpaid order up to date with PayPal: captures it once the buyer has approved.
    * Called from the return page, the webhook and order_status, so whichever comes first completes the sale.
+   * Stock is taken just before capturing, and only if it is still there: two buyers approving the last jar
+   * at once means one is charged and the other's order is cancelled as sold out, never both charged.
    */
   async sync(shop: Shop, order: Order): Promise<Order> {
-    if (order.status !== 'created') return order;
+    if (order.status !== 'created' && order.status !== 'pending') return order;
     const pp = await this.paypalFor(shop);
     if (!pp) return order;
     let o = await pp.getOrder(order.paypalOrderId);
-    if (o.status === 'APPROVED') o = await pp.captureOrder(order.paypalOrderId);
-    if (o.status === 'COMPLETED' && o.captureId && o.captureStatus !== 'DECLINED') return this.markPaid(order, o);
-    return order;
+    if (o.status === 'APPROVED') {
+      if (!(await this.takeStock(order))) {
+        await this.markCancelled(order.id, 'Sold out before the payment went through; the buyer was not charged.');
+        return (await this.order(order.id)) as Order;
+      }
+      try {
+        o = await pp.captureOrder(order.paypalOrderId);
+      } catch (e) {
+        await this.releaseStock(order.id);
+        throw e;
+      }
+    }
+    if (o.status === 'COMPLETED' && o.captureId) {
+      const verdict = captureVerdict(o.captureStatus);
+      if (verdict === 'paid') return this.markPaid(order, o);
+      if (verdict === 'pending') return this.markPending(order, o);
+      if (verdict === 'failed') {
+        await this.markCancelled(order.id, `PayPal declined the payment (${o.captureStatus}).`);
+        return (await this.order(order.id)) as Order;
+      }
+    }
+    if (o.status === 'VOIDED') await this.markCancelled(order.id, null);
+    return (await this.order(order.id)) ?? order;
+  }
+
+  /**
+   * Takes this order's stock once. Each product row only goes down if enough is left; if any line falls short,
+   * what was taken is put back and the order cannot be paid. Returns true when the order may be captured
+   * (including when another request already took the stock for it).
+   */
+  private async takeStock(order: Order): Promise<boolean> {
+    const claim = await this.db.prepare('UPDATE orders SET stock_taken = 1 WHERE id = ? AND stock_taken = 0').bind(order.id).run();
+    if (!claim.meta.changes) return true;
+    const need = new Map<string, number>();
+    for (const i of order.items) need.set(i.product_id, (need.get(i.product_id) ?? 0) + i.quantity);
+    const ids = [...need.keys()];
+    const results = await this.db.batch(
+      ids.map((id) => this.db.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock IS NOT NULL AND stock >= ?').bind(need.get(id), id, need.get(id))),
+    );
+    const short: string[] = [];
+    const taken: string[] = [];
+    for (let k = 0; k < ids.length; k++) (results[k].meta.changes ? taken : short).push(ids[k]);
+    if (!short.length) return true;
+    // A row that did not change is either untracked (fine) or short (not fine).
+    const tracked = await all<{ id: string }>(this.db.prepare(`SELECT id FROM products WHERE id IN (${short.map(() => '?').join(',')}) AND stock IS NOT NULL`).bind(...short));
+    if (!tracked.length) return true;
+    await this.db.batch([
+      ...taken.map((id) => this.db.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(need.get(id), id)),
+      this.db.prepare('UPDATE orders SET stock_taken = 0 WHERE id = ?').bind(order.id),
+    ]);
+    return false;
+  }
+
+  /** Puts an order's stock back (cancelled before payment, or refunded before it shipped). Runs once per order. */
+  private async releaseStock(orderId: string): Promise<void> {
+    const claim = await this.db.prepare('UPDATE orders SET stock_taken = 0 WHERE id = ? AND stock_taken = 1').bind(orderId).run();
+    if (!claim.meta.changes) return;
+    const order = await this.order(orderId);
+    if (!order) return;
+    await this.db.batch(order.items.map((i) => this.db.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(i.quantity, i.product_id)));
   }
 
   private async markPaid(order: Order, o: { captureId?: string; buyerName?: string; buyerEmail?: string; shipTo?: string }): Promise<Order> {
-    const res = await this.db
-      .prepare("UPDATE orders SET status = 'paid', capture_id = ?, buyer_name = ?, buyer_email = ?, ship_to = ?, paid_at = ? WHERE id = ? AND status = 'created'")
+    // Captured before stock was reserved (an order captured in PayPal directly, or by an older deploy): take it now.
+    if (!order.stockTaken) {
+      const claim = await this.db.prepare('UPDATE orders SET stock_taken = 1 WHERE id = ? AND stock_taken = 0').bind(order.id).run();
+      if (claim.meta.changes) {
+        await this.db.batch(order.items.map((i) => this.db.prepare('UPDATE products SET stock = MAX(stock - ?, 0) WHERE id = ? AND stock IS NOT NULL').bind(i.quantity, i.product_id)));
+      }
+    }
+    await this.db
+      .prepare("UPDATE orders SET status = 'paid', capture_id = ?, buyer_name = ?, buyer_email = ?, ship_to = ?, paid_at = ? WHERE id = ? AND status IN ('created', 'pending')")
       .bind(o.captureId ?? null, o.buyerName ?? null, o.buyerEmail ?? null, o.shipTo ?? null, Date.now(), order.id)
       .run();
-    // Only the call that flipped the row takes stock, so a webhook racing the return page cannot count a sale twice.
-    if (res.meta.changes) {
-      await this.db.batch(
-        order.items.map((i) => this.db.prepare('UPDATE products SET stock = MAX(stock - ?, 0) WHERE id = ? AND stock IS NOT NULL').bind(i.quantity, i.product_id)),
-      );
-    }
     return (await this.order(order.id)) as Order;
+  }
+
+  /** Captured but not cleared (eCheck, payment review): stock stays reserved; PayPal's PAYMENT.CAPTURE.COMPLETED webhook finishes it. */
+  private async markPending(order: Order, o: { captureId?: string; buyerName?: string; buyerEmail?: string; shipTo?: string }): Promise<Order> {
+    await this.db
+      .prepare("UPDATE orders SET status = 'pending', capture_id = ?, buyer_name = ?, buyer_email = ?, ship_to = ? WHERE id = ? AND status = 'created'")
+      .bind(o.captureId ?? null, o.buyerName ?? null, o.buyerEmail ?? null, o.shipTo ?? null, order.id)
+      .run();
+    return (await this.order(order.id)) as Order;
+  }
+
+  /** Abandoned checkouts: orders nobody approved within `maxAgeMs` are cancelled (PayPal voids them after 3 hours anyway). */
+  async expireStaleOrders(shopId: string, maxAgeMs = 6 * 3_600_000): Promise<number> {
+    const res = await this.db.prepare("UPDATE orders SET status = 'cancelled' WHERE shop_id = ? AND status = 'created' AND stock_taken = 0 AND created_at < ?").bind(shopId, Date.now() - maxAgeMs).run();
+    return res.meta.changes ?? 0;
   }
 
   async markShipped(shop: Shop, order: Order, carrier: string, trackingNumber: string): Promise<string | null> {
@@ -571,27 +723,59 @@ export class Store {
     return note;
   }
 
-  /** by = 'merchant' always refunds; a shopper's request is held to the shop's refund window. */
-  async refund(shop: Shop, order: Order, reason: string, by: 'merchant' | 'shopper'): Promise<RefundDecision> {
+  /**
+   * by = 'merchant' always refunds; a shopper's request is held to the shop's refund window, and a shipped order
+   * goes to the merchant (the goods have to come back first). `amountCents` = a partial refund (merchant only).
+   */
+  async refund(shop: Shop, order: Order, reason: string, by: 'merchant' | 'shopper', amountCents?: number): Promise<RefundDecision> {
     const decision = refundPolicy(order, shop.refundDays, by, Date.now());
     if (!decision.allowed) return decision;
+    const left = order.totalCents - order.refundedCents;
+    const amount = amountCents === undefined ? left : Math.round(amountCents);
+    if (!(amount > 0) || amount > left) return { allowed: false, reason: `Refund between ${fmt(1, order.currency)} and ${fmt(left, order.currency)}.` };
     const pp = await this.paypalFor(shop);
     if (!pp || !order.captureId) return { allowed: false, reason: 'This order has no PayPal capture to refund.' };
     if (this.paymentMode(shop) === 'payee') {
       // The money is in the merchant's own PayPal; only they can send it back.
       return { allowed: false, reason: `The payment is in ${shop.name}'s PayPal account, so the refund is issued there (PayPal → Activity → this payment → Refund). The request was passed to the merchant.` };
     }
-    await pp.refundCapture(order.captureId, reason || `Refund from ${shop.name}`);
-    await this.markRefunded(order.id, reason || null);
-    return decision;
+    await pp.refundCapture(order.captureId, reason || `Refund from ${shop.name}`, amount === left && !order.refundedCents ? undefined : { cents: amount, currency: order.currency, seq: order.refundedCents });
+    await this.recordRefund(order.id, amount, reason || null);
+    return amount < left ? { allowed: true, reason: `Refunded ${fmt(amount, order.currency)} of ${fmt(order.totalCents, order.currency)}.` } : decision;
+  }
+
+  /**
+   * Adds a refund to the order (made here, or in PayPal and reported by webhook). The order turns 'refunded' once
+   * refunds cover the total; a full refund of an order that never shipped puts its stock back.
+   */
+  async recordRefund(orderId: string, cents: number, reason: string | null): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE orders SET refunded_cents = MIN(total_cents, refunded_cents + ?), refund_reason = COALESCE(?, refund_reason), refunded_at = ?,
+           status = CASE WHEN refunded_cents + ? >= total_cents THEN 'refunded' ELSE status END
+         WHERE id = ? AND status != 'refunded'`,
+      )
+      .bind(cents, reason, Date.now(), cents, orderId)
+      .run();
+    const o = await this.order(orderId);
+    if (o?.status === 'refunded' && !o.shippedAt) await this.releaseStock(orderId);
+  }
+
+  /** PayPal says the refund total on this capture is now `totalRefundedCents` (webhooks carry the running total). */
+  async syncRefundTotal(orderId: string, totalRefundedCents: number, reason: string | null): Promise<void> {
+    const o = await this.order(orderId);
+    if (!o || totalRefundedCents <= o.refundedCents) return;
+    await this.recordRefund(orderId, totalRefundedCents - o.refundedCents, reason);
   }
 
   async markRefunded(orderId: string, reason: string | null): Promise<void> {
-    await this.db.prepare("UPDATE orders SET status = 'refunded', refund_reason = COALESCE(?, refund_reason), refunded_at = ? WHERE id = ? AND status != 'refunded'").bind(reason, Date.now(), orderId).run();
+    const o = await this.order(orderId);
+    if (o) await this.recordRefund(orderId, o.totalCents - o.refundedCents, reason);
   }
 
-  async markCancelled(orderId: string): Promise<void> {
-    await this.db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'created'").bind(orderId).run();
+  async markCancelled(orderId: string, reason: string | null = null): Promise<void> {
+    const res = await this.db.prepare("UPDATE orders SET status = 'cancelled', refund_reason = COALESCE(?, refund_reason) WHERE id = ? AND status IN ('created', 'pending')").bind(reason, orderId).run();
+    if (res.meta.changes) await this.releaseStock(orderId);
   }
 }
 
@@ -604,11 +788,22 @@ export type RefundDecision = { allowed: true; reason: string } | { allowed: fals
 
 export function refundPolicy(order: Pick<Order, 'status' | 'paidAt'>, refundDays: number, by: 'merchant' | 'shopper', now: number): RefundDecision {
   if (order.status === 'refunded') return { allowed: false, reason: 'This order is already refunded.' };
+  if (order.status === 'pending') return { allowed: false, reason: 'PayPal is still clearing this payment; a refund can be made once it has.' };
   if (order.status !== 'paid' && order.status !== 'shipped') return { allowed: false, reason: 'This order was never paid, so there is nothing to refund.' };
   if (by === 'merchant') return { allowed: true, reason: 'Refunded by the merchant.' };
+  if (order.status === 'shipped') return { allowed: false, reason: 'This order has already shipped, so the item has to come back first. The request was passed to the merchant, who will reply with return instructions.' };
   const days = (now - (order.paidAt ?? now)) / 86_400_000;
   if (days <= refundDays) return { allowed: true, reason: `Within the ${refundDays}-day refund window.` };
   return { allowed: false, reason: `The ${refundDays}-day refund window has passed (paid ${Math.floor(days)} days ago). The request was passed to the merchant.` };
+}
+
+/** What a capture's status means for the order: COMPLETED is money in; PENDING is still clearing; the rest failed. */
+export function captureVerdict(status: string | undefined): 'paid' | 'pending' | 'failed' | 'unknown' {
+  // Refunded in PayPal right after capture still means the sale happened; the refund webhook records the refund.
+  if (status === 'COMPLETED' || status === 'REFUNDED' || status === 'PARTIALLY_REFUNDED') return 'paid';
+  if (status === 'PENDING') return 'pending';
+  if (status === 'DECLINED' || status === 'FAILED') return 'failed';
+  return 'unknown';
 }
 
 /** Matches the requested options against the product's variants (case-insensitive) and returns the unit price. */

@@ -6,6 +6,7 @@ import { extractProducts, productsFromUrl, type DraftProduct } from '@/server/ag
 import { connectSession, createMerchant, DISTRIBUTION, domainOf, getProduct, marketOf } from '@/server/channel3';
 import type { Env } from '@/server/env';
 import { overLimit } from '@/server/http/mcp';
+import { toCents } from '@/server/paypal';
 import { requireShop } from '@/server/session';
 import type { Store } from '@/server/store';
 import { parseVariantText } from '@/server/variants';
@@ -63,7 +64,7 @@ export async function importPayLinksAction() {
     if (!links.length) note = 'No payment links in this PayPal account yet. Create one in PayPal, or import from a website or text.';
     else {
       const r = await store.importPayLinks(shop, links);
-      note = `Imported ${r.added} new and updated ${r.updated} products from your PayPal payment links.`;
+      note = `Imported ${r.added} new and updated ${r.updated} products from your PayPal payment links.${r.skipped.length ? ` Skipped ${r.skipped.length} priced in another currency than your store’s ${shop.currency}: ${r.skipped.slice(0, 5).join(', ')}.` : ''}`;
     }
   } catch (e) {
     error = msg(e);
@@ -163,9 +164,17 @@ export async function matchProductAction(productId: string, f: FormData) {
 
 export async function answerQuestionAction(id: string, f: FormData) {
   const { store, shop } = await requireShop();
-  const answer = String(f.get('answer') ?? '').trim();
-  if (answer) await store.answerQuestion(shop.id, id, answer);
-  back('/app/questions', 'Saved. Your store agent will use this answer from now on.');
+  const answer = String(f.get('answer') ?? '').trim().slice(0, 4000);
+  if (!answer) back('/app/questions', undefined, 'Write an answer first.');
+  const q = await store.question(id);
+  await store.answerQuestion(shop.id, id, answer);
+  back('/app/questions', q?.kind === 'refund_request' ? 'Saved. Your note is kept with the request; it is not shared with shoppers.' : 'Saved. Your store agent will use this answer from now on, and the agent that asked can fetch it.');
+}
+
+export async function dismissQuestionAction(id: string) {
+  const { store, shop } = await requireShop();
+  await store.dismissQuestion(shop.id, id);
+  back('/app/questions', 'Dismissed.');
 }
 
 async function ownOrder(id: string) {
@@ -177,22 +186,32 @@ async function ownOrder(id: string) {
 
 export async function shipOrderAction(id: string, f: FormData) {
   const { store, shop, order } = await ownOrder(id);
-  const problem = await store.markShipped(shop, order, String(f.get('carrier') ?? '').trim(), String(f.get('tracking') ?? '').trim());
+  const tracking = String(f.get('tracking') ?? '').trim();
+  const problem = await store.markShipped(shop, order, String(f.get('carrier') ?? '').trim(), tracking);
   if (problem) back('/app/orders', undefined, problem);
-  back('/app/orders', 'Marked shipped; the tracking number was sent to PayPal.');
+  const toPayPal = tracking && order.captureId && store.paymentMode(shop) !== 'payee';
+  back('/app/orders', tracking ? (toPayPal ? 'Marked shipped; the tracking number was sent to PayPal and the buyer.' : 'Marked shipped with the tracking number.') : 'Marked shipped.');
 }
 
-export async function refundOrderAction(id: string) {
+export async function refundOrderAction(id: string, f: FormData) {
   const { store, shop, order } = await ownOrder(id);
-  const d = await store.refund(shop, order, 'Refunded by the store', 'merchant');
+  const raw = String(f.get('amount') ?? '').trim();
+  const cents = raw ? toCents(raw) : undefined;
+  if (raw && !cents) back('/app/orders', undefined, 'Enter the refund amount as a number, or leave it empty to refund everything.');
+  let d;
+  try {
+    d = await store.refund(shop, order, 'Refunded by the store', 'merchant', cents);
+  } catch (e) {
+    back('/app/orders', undefined, msg(e));
+  }
   if (!d.allowed) back('/app/orders', undefined, d.reason);
-  back('/app/orders', 'Refunded to the buyer’s PayPal.');
+  back('/app/orders', cents ? `${d.reason} Sent to the buyer’s PayPal.` : 'Refunded to the buyer’s PayPal.');
 }
 
 export async function syncOrderAction(id: string) {
   const { store, shop, order } = await ownOrder(id);
   const o = await store.sync(shop, order);
-  back('/app/orders', o.status === 'created' ? 'Still waiting for the buyer to approve in PayPal.' : `Order is ${o.status}.`);
+  back('/app/orders', o.status === 'created' ? 'Still waiting for the buyer to approve in PayPal.' : o.status === 'pending' ? 'Approved; PayPal is still clearing the payment.' : `Order is ${o.status}.`);
 }
 
 // ---- settings ---------------------------------------------------------------------------------
@@ -209,7 +228,9 @@ export async function saveSettingsAction(f: FormData) {
     // The public directory is for real merchants; demo shops stay unlisted.
     listed: f.get('listed') === 'on' && !user.isAnonymous,
   });
-  back('/app/settings', problem ? undefined : 'Saved.', problem ?? undefined);
+  const newCurrency = String(f.get('currency'));
+  const repriced = !problem && newCurrency !== shop.currency && (CURRENCIES as readonly string[]).includes(newCurrency) && (await store.products(shop.id, { includeInactive: true })).length > 0;
+  back('/app/settings', problem ? undefined : repriced ? `Saved. Prices are now in ${newCurrency} but were not converted, so check each product’s price under Products.` : 'Saved.', problem ?? undefined);
 }
 
 export async function savePayeeAction(f: FormData) {

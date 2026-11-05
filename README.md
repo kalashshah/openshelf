@@ -31,9 +31,11 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 - **The other direction too.** Products you create here can be published as PayPal payment links you can share anywhere.
 
 **For shoppers and their agents**
-- **One MCP server for every listed store** (`/mcp`). Each store can also share a link scoped to just its shop (`/s/<store>/mcp`): same tools, no `store` argument needed, and it works for stores that aren't in the directory. Tools: `list_stores`, `search_products`, `get_product`, `ask_store`, `buy`, `order_status`, `request_refund`.
+- **One MCP server for every listed store** (`/mcp`). Each store can also share a link scoped to just its shop (`/s/<store>/mcp`): same tools, no `store` argument needed, and it works for stores that aren't in the directory. Tools: `list_stores`, `search_products`, `get_product`, `ask_store`, `check_question`, `buy`, `order_status`, `request_refund`.
 - A web storefront for people at `/s/<store>`, with an "Ask the store" chat that talks to the same store agent, plus `/s/<store>/llms.txt` for agents that read rather than call tools.
 - **Nobody is charged without approving.** `buy` returns a PayPal approval link. Prices always come from the catalog, never from the agent.
+- **Guardrails for agents that spend money.** `buy` takes `max_total` (the most the person agreed to spend; above it no order is opened) and an `idempotency_key` (a retried call returns the same order, never a second one). Sold-out products are left out of search.
+- **Questions get answered later too.** When the store agent doesn't know, `ask_store` returns a `question_id`; once the merchant answers, `check_question` returns the answer to the agent that asked, and every future shopper's agent gets it as well.
 
 ## Try it (judges)
 
@@ -50,14 +52,16 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 | OAuth2 client credentials | access tokens per PayPal app (merchants' own app secrets are sealed with AES-GCM) | Server SDK + REST |
 | **Orders v2** create / get / capture | every purchase, agent or human; PayPal collects the address only when something ships (`GET_FROM_FILE` / `NO_SHIPPING`) | **PayPal Server SDK** `OrdersController` |
 | **Orders v2 tracking** | the merchant's tracking number goes to PayPal and the buyer (known carriers by code, others as `OTHER` + name) | **PayPal Server SDK** `createOrderTracking` |
-| **Payments v2 captures refund** | shopper refunds inside the store's window, merchant refunds anytime | **PayPal Server SDK** `PaymentsController` |
+| **Payments v2 captures refund** | shopper refunds inside the store's window, merchant refunds anytime, full or partial | **PayPal Server SDK** `PaymentsController` |
 | **Orders v2 `payee`** | merchants who only log in with PayPal: Open Shelf's app creates the order and the money goes straight to their account | **PayPal Server SDK** |
 | **Log in with PayPal** (OpenID Connect) | the only way merchants sign in | better-auth |
 | **Payment Links & Buttons** (`/v1/checkout/payment-resources`) | importing a merchant's payment links as products, and publishing products back as links | REST (not in the SDK) |
 | **Invoicing v2** (search + get) | turning what a service business has invoiced into products | REST (not in the SDK) |
-| **Webhooks** + verify-webhook-signature | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED` complete a sale even if the buyer never comes back | REST (not in the SDK) |
+| **Webhooks** + verify-webhook-signature | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED/PENDING/DENIED/REFUNDED/REVERSED`: complete a sale even if the buyer never comes back, follow late-clearing and denied payments, record refunds and chargebacks made in PayPal | REST (not in the SDK) |
 
-Paying is idempotent: the return page, the webhook and `order_status` all complete a sale, and a conditional update makes sure stock is taken only once.
+Paying is idempotent: the return page, the webhook and `order_status` all complete a sale, and conditional updates make sure stock is taken only once. Stock is reserved **before** the capture and only if it is still there, so two buyers approving the last item at the same moment never both get charged: the second order is cancelled as sold out before PayPal takes any money. A capture that PayPal is still clearing (`PENDING`) waits as "payment clearing" until `PAYMENT.CAPTURE.COMPLETED`; denied captures cancel the order and put the stock back. Refunds made in PayPal, partial ones included, are followed from the capture's running refund total, and reversals (chargebacks) mark the order refunded. Each webhook delivery is handled once.
+
+Refund rules: a shopper's agent gets an instant refund inside the window while the order hasn't shipped; a shipped order or a late request goes to the merchant's **Refund requests** inbox (kept private, never shown to the store agent). Merchants can refund any amount; a full refund before shipping restocks the items.
 
 ## Built with APIMatic's PayPal Server SDK context plugin
 
@@ -101,7 +105,7 @@ pnpm install
 cp .dev.vars.example .dev.vars   # fill in the secrets; generators are in the comments
 npx wrangler d1 create openshelf # paste the id into wrangler.jsonc
 pnpm run db:local && pnpm dev    # http://localhost:3000 (Next dev with the Cloudflare bindings)
-pnpm test                        # pricing, refund policy, search, PayPal SDK wire format, Channel3, schema.org
+pnpm test                        # checkout/stock/refund flows on an in-memory D1, MCP tool scoping, pricing, PayPal SDK wire format, Channel3, schema.org
 pnpm preview                     # the built worker in workerd, as it runs in production
 ```
 
@@ -118,7 +122,8 @@ Deploy: `pnpm run db:remote && pnpm run deploy && pnpm run secrets`. To import p
 ## Known limits
 
 - Search is keyword ranking in memory, which is fine for hundreds of products. Swap in D1 FTS or Vectorize for a big directory.
-- One currency per store, and shipping is included in prices (PayPal collects the address).
+- One currency per store, and shipping is included in prices (PayPal collects the address). Payment links in another currency are skipped on import.
+- "Log in with PayPal" payee mode checks out through Open Shelf's own PayPal app, which is a sandbox app in this deployment; merchants who connect their own live app sell live.
 - Payment links carry no images or stock, so imported products start with a tinted placeholder and untracked stock until the merchant edits them.
 
 MIT licensed.

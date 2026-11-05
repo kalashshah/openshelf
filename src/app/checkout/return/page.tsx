@@ -13,12 +13,26 @@ export default async function CheckoutReturn({ searchParams }: { searchParams: P
   const found = await store.order(o ?? token ?? '');
   const shop = found ? await store.shopById(found.shopId) : null;
   const order = found && shop ? await store.sync(shop, found) : null;
-  const paid = order && order.status !== 'created';
+  const paid = order && (order.status === 'paid' || order.status === 'shipped');
   const back = shop && (
     <FancyButton asChild variant="basic">
       <a href={`/s/${shop.slug}`}>Back to {shop.name}</a>
     </FancyButton>
   );
+  if (order?.status === 'cancelled') {
+    return (
+      <Centered icon={<Clock className="size-5 text-warning-base" />} title="This order didn’t go through" actions={back}>
+        {order.refundReason ?? 'The order was cancelled.'} You have not been charged.
+      </Centered>
+    );
+  }
+  if (order?.status === 'pending') {
+    return (
+      <Centered icon={<Clock className="size-5 text-warning-base" />} title="Payment is clearing" actions={back}>
+        PayPal accepted order <span className="font-medium text-ink">{order.id}</span> and is still clearing the payment. {shop?.name ?? 'The store'} will prepare it as soon as PayPal confirms.
+      </Centered>
+    );
+  }
   return paid && order ? (
     <Centered icon={<Check className="size-5 text-success-base" />} title="You’re all set" actions={back}>
       {shop?.name ?? 'The store'} has your order <span className="font-medium text-ink">{order.id}</span> for <span className="font-medium text-ink">{fmt(order.totalCents, order.currency)}</span>, paid with PayPal. If an AI agent placed it, go back to it now: it can check the order and tracking for you.
