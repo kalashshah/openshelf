@@ -81,7 +81,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const { n, e } = await searchParams;
   const [products, questions, orders] = await Promise.all([store.products(shop.id), store.questions(shop.id, 500), store.orders(shop.id, 500)]);
   const paid = orders.filter((o) => o.status === 'paid' || o.status === 'shipped');
-  const unanswered = questions.filter((q) => !q.answered && !q.merchantAnswer).length;
+  const unanswered = questions.filter((q) => !q.answered && !q.resolvedAt).length;
   const feed = [...questions.slice(0, 12).map((q) => ({ at: q.createdAt, q })), ...orders.slice(0, 12).map((o) => ({ at: o.createdAt, o }))].sort((a, b) => b.at - a.at).slice(0, 12);
   const mcp = `${env.PUBLIC_URL}/s/${shop.slug}/mcp`;
   const directory = `${env.PUBLIC_URL}/mcp`;
@@ -293,9 +293,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                       <p className="line-clamp-2 text-paragraph-xs text-text-sub-600">{f.q.merchantAnswer ?? f.q.answer}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
-                      <StatusBadge.Root status={f.q.answered || f.q.merchantAnswer ? 'completed' : 'pending'} variant="light">
+                      <StatusBadge.Root status={f.q.answered || f.q.resolvedAt ? 'completed' : 'pending'} variant="light">
                         <StatusBadge.Dot />
-                        {f.q.merchantAnswer ? 'You answered' : f.q.answered ? 'Answered' : 'Needs answer'}
+                        {f.q.merchantAnswer ? 'You answered' : f.q.answered ? 'Answered' : f.q.resolvedAt ? 'Dismissed' : f.q.kind === 'refund_request' ? 'Refund request' : 'Needs answer'}
                       </StatusBadge.Root>
                       <span className="text-paragraph-xs text-text-soft-400">
                         {f.q.asker === 'agent' ? 'AI agent' : 'Store page'} · {when(f.q.createdAt)}

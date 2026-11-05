@@ -7,7 +7,7 @@ export const metadata = { title: 'Dashboard' };
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { store, shop, user } = await requireShop();
-  const unanswered = (await store.questions(shop.id, 500)).filter((q) => !q.answered && !q.merchantAnswer).length;
+  const unanswered = (await store.questions(shop.id, 500)).filter((q) => !q.answered && !q.resolvedAt).length;
   return (
     <AppShell shop={{ name: shop.name, slug: shop.slug, hue: hueOf(shop.name) }} unanswered={unanswered} demo={user.isAnonymous}>
       {children}
