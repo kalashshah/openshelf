@@ -25,7 +25,7 @@ Shoppers are starting to send AI agents to find and buy things for them. PayPal'
 
 **For merchants**
 - **Log in with PayPal and you can sell.** No API keys: Open Shelf's PayPal app creates each order with your PayPal account as the payee, so money lands straight in it. Connect your own PayPal app (optional) to also import payment links and invoices, refund automatically and send tracking to PayPal.
-- **Bring your shop in one click.** Import your **PayPal payment links** (Pay Links & Buttons API), convert a **Shopify store** exactly (via its public `products.json`), have **Claude read any product page**, or paste a price list or CSV. Options and per-option prices come across too.
+- **Bring your shop in one click.** Import your **PayPal payment links** (Pay Links & Buttons API), convert a **Shopify store** exactly (via its public `products.json`), have **an AI model read any product page**, or paste a price list or CSV. Options and per-option prices come across too.
 - **A store agent that only says what you've published.** It answers from your catalog, your "about the store" notes and your past answers. Questions it can't answer land in **Questions** marked "needs answer". You answer once, and every future shopper's agent gets that answer.
 - **Orders in your PayPal.** Orders are created with your PayPal app credentials (Orders v2). The buyer picks a shipping address and approves in PayPal. Add a tracking number and it goes to PayPal (Orders tracking API). Refunds go through the Captures API and follow your refund window.
 - **The other direction too.** Products you create here can be published as PayPal payment links you can share anywhere.
@@ -89,7 +89,7 @@ Keys: `CHANNEL3_PARTNER_KEY` (Partner Program) and `CHANNEL3_API_KEY` (developer
 ## How it uses AI
 
 - **An OpenAI model (gpt-5.4-mini by default, `OPENAI_MODEL` to change) is the store agent.** It gets one shop's catalog, notes and the merchant's past answers at the front of its instructions, which OpenAI caches automatically. It returns structured output `{answer, product_ids, answered}`, and is told to say "the shop hasn't published that" instead of guessing, because another agent may act on its answer. `answered: false` routes the question to the merchant.
-- **Claude reads existing shops.** For a product page, it gets the page's JSON-LD, image URLs and text and returns a typed catalog (names, prices, options, images). Shopify stores skip the model and convert exactly.
+- **The same model reads existing shops.** For a product page, it gets the page's JSON-LD, image URLs and text and returns a typed catalog (names, prices, options, images). Shopify stores skip the model and convert exactly.
 - **The shopper's own agent** (Claude, ChatGPT, anything that speaks MCP) does the shopping through the MCP tools.
 
 ## Run it yourself
