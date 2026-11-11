@@ -242,7 +242,7 @@ export default async function Landing() {
         </section>
 
         <footer className="flex flex-wrap justify-between gap-x-6 gap-y-2 border-t border-line pt-6 text-[13px] text-muted">
-          <span>Open Shelf · PayPal Server SDK · Claude · MCP · Channel3 · Cloudflare Workers</span>
+          <span>Open Shelf · PayPal Server SDK · OpenAI · MCP · Channel3 · Cloudflare Workers</span>
           <nav className="flex flex-wrap gap-x-5 gap-y-2">
             {[
               { href: '/s/dewdrop', label: 'Demo store' },

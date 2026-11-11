@@ -90,7 +90,7 @@ export async function importUrlAction(f: FormData) {
     if (!products.length) error = 'No products with prices found on that page. Try a product or collection page, or paste the list as text.';
     else {
       const n = await saveDrafts(store, shop.id, products, via === 'shopify' ? 'shopify' : 'import');
-      note = via === 'shopify' ? `Converted ${n} products from the Shopify store.` : `Claude read the page and added ${n} products. Check prices and descriptions below.`;
+      note = via === 'shopify' ? `Converted ${n} products from the Shopify store.` : `Read the page and added ${n} products. Check prices and descriptions below.`;
     }
   } catch (e) {
     error = `Could not import that page: ${msg(e)}`;
@@ -111,8 +111,8 @@ export async function importInvoicesAction() {
     if (!lines.length) note = 'No invoices in this PayPal account yet.';
     else {
       const drafts = await extractProducts(env, `PayPal invoices of ${shop.name}, newest first:\n${lines.join('\n')}`);
-      if (!drafts.length) error = 'Claude found nothing sellable in those invoices.';
-      else note = `Claude read ${lines.length} invoice lines and made ${await saveDrafts(store, shop.id, drafts, 'invoices')} offerings. Check prices and descriptions below.`;
+      if (!drafts.length) error = 'Found nothing sellable in those invoices.';
+      else note = `Read ${lines.length} invoice lines and made ${await saveDrafts(store, shop.id, drafts, 'invoices')} offerings. Check prices and descriptions below.`;
     }
   } catch (e) {
     error = msg(e);
@@ -125,7 +125,7 @@ export async function importTextAction(f: FormData) {
   if (await limited(env)) back('/app/products', undefined, 'Too many imports at once; try again in a minute.');
   const drafts = await extractProducts(env, String(f.get('text') ?? ''));
   if (!drafts.length) back('/app/products', undefined, 'No products with prices found in that text.');
-  back('/app/products', `Claude added ${await saveDrafts(store, shop.id, drafts, 'import')} products. Check them below.`);
+  back('/app/products', `Added ${await saveDrafts(store, shop.id, drafts, 'import')} products. Check them below.`);
 }
 
 /** The other direction: products made here become PayPal payment links the merchant can share anywhere. */

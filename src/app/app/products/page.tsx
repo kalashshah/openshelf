@@ -76,14 +76,14 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 </Submit>
               </form>
             </ImportCard>
-            <ImportCard marks={[<BrandIcon key="p" name="paypal" size="sm" />, <BrandIcon key="c" name="claude" size="sm" />]} title="PayPal invoices" description="Sell services? Claude turns what you’ve invoiced into offerings agents can book.">
+            <ImportCard marks={[<BrandIcon key="p" name="paypal" size="sm" />, <BrandIcon key="c" name="openai" size="sm" />]} title="PayPal invoices" description="Sell services? AI turns what you’ve invoiced into offerings agents can book.">
               <form action={importInvoicesAction}>
                 <Submit variant="basic" pending="Reading invoices…" className="w-full">
                   <Receipt className="size-4" /> Import invoices
                 </Submit>
               </form>
             </ImportCard>
-            <ImportCard marks={[<BrandIcon key="s" name="shopify" size="sm" />, <Tile key="g" icon={<Globe />} />]} title="Shopify or any shop page" description="Shopify stores convert exactly. Claude reads any other page.">
+            <ImportCard marks={[<BrandIcon key="s" name="shopify" size="sm" />, <Tile key="g" icon={<Globe />} />]} title="Shopify or any shop page" description="Shopify stores convert exactly. AI reads any other page.">
               <form action={importUrlAction} className="flex flex-col gap-2">
                 <Input name="url" type="url" required placeholder="https://yourshop.com" />
                 <Submit variant="basic" pending="Importing…" className="w-full">
@@ -91,7 +91,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 </Submit>
               </form>
             </ImportCard>
-            <ImportCard marks={[<Tile key="f" icon={<FileText />} />, <BrandIcon key="c" name="claude" size="sm" />]} title="A price list or CSV" description="Paste anything with names and prices. Claude sorts it out.">
+            <ImportCard marks={[<Tile key="f" icon={<FileText />} />, <BrandIcon key="c" name="openai" size="sm" />]} title="A price list or CSV" description="Paste anything with names and prices. AI sorts it out.">
               <form action={importTextAction} className="flex flex-col gap-2">
                 <Textarea name="text" required rows={2} placeholder={'Lavender soap bar, $8, 100 g\nGift box of 3 soaps, $21'} />
                 <Submit variant="basic" pending="Reading…" className="w-full">
