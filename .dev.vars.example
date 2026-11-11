@@ -3,7 +3,7 @@
 BETTER_AUTH_SECRET=
 MASTER_KEY=
 # The store agent and the AI importer (console.anthropic.com → API keys).
-ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
 # A sandbox PayPal app (developer.paypal.com → Apps & Credentials) that demo stores check out through.
 DEMO_PAYPAL_CLIENT_ID=
 DEMO_PAYPAL_CLIENT_SECRET=

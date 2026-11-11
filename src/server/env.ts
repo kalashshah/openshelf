@@ -22,7 +22,9 @@ export interface Env {
   CHANNEL3_PARTNER_KEY?: string;
 
   /** Backs the store agent and the AI product import. */
-  ANTHROPIC_API_KEY: string;
+  OPENAI_API_KEY: string;
+  /** Defaults to gpt-5.4-mini. */
+  OPENAI_MODEL?: string;
 
   /** The sandbox PayPal app demo shops ("Try the demo") check out through. */
   DEMO_PAYPAL_CLIENT_ID?: string;

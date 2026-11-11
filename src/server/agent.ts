@@ -1,17 +1,29 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import type { Env } from './env';
 import { toCents } from './paypal';
 import { cleanVariants, fmt, type Product, type Shop, type Variant } from './store';
 
-const MODEL = 'claude-opus-5-5';
-// Opus 5.5 can decline in a few safety categories; "default" re-runs a declined request on the right fallback model.
-const FALLBACK = { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const };
-
-function client(env: Env): Anthropic {
-  if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set on this deployment');
-  return new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+/** One structured-output call to OpenAI's Responses API. null when the model refuses or returns nothing usable. */
+async function parse<T extends z.ZodType>(env: Env, o: { name: string; schema: T; system: string; input: string; maxTokens: number }): Promise<z.infer<T> | null> {
+  if (!env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set on this deployment');
+  const { $schema: _, ...schema } = z.toJSONSchema(o.schema) as Record<string, unknown>;
+  const res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: env.OPENAI_MODEL ?? 'gpt-5.4-mini',
+      instructions: o.system,
+      input: o.input,
+      reasoning: { effort: 'low' },
+      max_output_tokens: o.maxTokens,
+      text: { format: { type: 'json_schema', name: o.name, schema, strict: true } },
+    }),
+  });
+  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const j = (await res.json()) as { output?: { type: string; content?: { type: string; text?: string }[] }[] };
+  const text = j.output?.flatMap((m) => (m.type === 'message' ? (m.content ?? []) : [])).find((c) => c.type === 'output_text')?.text;
+  const parsed = text ? o.schema.safeParse(JSON.parse(text)) : null;
+  return parsed?.success ? parsed.data : null;
 }
 
 // ---- the store agent ---------------------------------------------------------------------
@@ -62,21 +74,15 @@ function variantText(vs: Variant[], currency: string): string {
 }
 
 export async function askStore(env: Env, context: string, question: string, product?: Product | null): Promise<StoreAnswer> {
-  const res = await client(env).beta.messages.parse({
-    model: MODEL,
-    max_tokens: 4000,
-    ...FALLBACK,
-    output_config: { effort: 'low', format: betaZodOutputFormat(Answer) },
-    system: [
-      { type: 'text', text: STORE_AGENT },
-      { type: 'text', text: context, cache_control: { type: 'ephemeral' } },
-    ],
-    messages: [{ role: 'user', content: product ? `(About product ${product.id}, ${product.name})\n${question}` : question }],
+  // Shop context sits at the front of the prompt, unchanged between questions, so OpenAI's automatic prompt cache reuses it.
+  const out = await parse(env, {
+    name: 'store_answer',
+    schema: Answer,
+    system: `${STORE_AGENT}\n\n${context}`,
+    input: product ? `(About product ${product.id}, ${product.name})\n${question}` : question,
+    maxTokens: 4000,
   });
-  if (res.stop_reason === 'refusal' || !res.parsed_output) {
-    return { answer: "I can't help with that question here. It has been passed to the merchant.", product_ids: [], answered: false };
-  }
-  return res.parsed_output;
+  return out ?? { answer: "I can't help with that question here. It has been passed to the merchant.", product_ids: [], answered: false };
 }
 
 // ---- turning someone's existing shop into products --------------------------------------------
@@ -105,17 +111,16 @@ export interface DraftProduct {
 
 /** Products from whatever the merchant has: a shop page, an Instagram bio, a pasted price list or CSV. */
 export async function extractProducts(env: Env, source: string): Promise<DraftProduct[]> {
-  const res = await client(env).beta.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    ...FALLBACK,
-    output_config: { effort: 'low', format: betaZodOutputFormat(Extracted) },
+  const out = await parse(env, {
+    name: 'catalog',
+    schema: Extracted,
+    maxTokens: 16000,
     system:
       'You turn a small business\'s existing material (a web page, a social profile, a price list, a CSV) into a product catalog. Include only things a customer can buy at a stated price. Keep each description factual and taken from the material: what it is, size, materials or ingredients, who it suits; do not invent claims. Use absolute image URLs that appear in the material, or null. Services and digital products do not need shipping. If the material is past invoices or receipts, turn repeated or dated line items into the offerings a new customer could buy ("Website maintenance: September" becomes a monthly "Website maintenance"), using the most recent price, and leave out one-off deposits and partial payments. Variants are choices the buyer makes (size, colour, scent); give an option a price only when it differs from the base price. Return at most 40 products.',
-    messages: [{ role: 'user', content: source.slice(0, 120_000) }],
+    input: source.slice(0, 120_000),
   });
-  if (res.stop_reason === 'refusal' || !res.parsed_output) return [];
-  return res.parsed_output.products
+  if (!out) return [];
+  return out.products
     .filter((p) => p.name.trim() && p.price > 0)
     .map((p) => ({
       name: p.name.trim(),
@@ -129,7 +134,7 @@ export async function extractProducts(env: Env, source: string): Promise<DraftPr
 
 /**
  * A URL → products. Shopify stores expose their whole catalog at /products.json, so those convert exactly with no model call;
- * any other page is reduced to its text, structured data and images and read by Claude.
+ * any other page is reduced to its text, structured data and images and read by the model.
  */
 export async function productsFromUrl(env: Env, url: string): Promise<{ products: DraftProduct[]; via: 'shopify' | 'ai' }> {
   const u = new URL(url);
@@ -194,7 +199,7 @@ function fromShopify(p: ShopifyProduct): DraftProduct {
   return { name: p.title, description: stripHtml(p.body_html ?? '').slice(0, 1500), priceCents: base, imageUrl: p.images?.[0]?.src ?? null, variants: cleanVariants(variants), needsShipping: p.variants?.[0]?.requires_shipping !== false };
 }
 
-/** What Claude reads of a page: JSON-LD (most stores publish Product data), image URLs with alt text, then visible text. */
+/** What the model reads of a page: JSON-LD (most stores publish Product data), image URLs with alt text, then visible text. */
 export function pageDigest(html: string, baseUrl: string): string {
   const ld = [...html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1].trim()).join('\n').slice(0, 40_000);
   const imgs = [...html.matchAll(/<img[^>]*>/gi)]

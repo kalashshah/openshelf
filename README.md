@@ -88,7 +88,7 @@ Keys: `CHANNEL3_PARTNER_KEY` (Partner Program) and `CHANNEL3_API_KEY` (developer
 
 ## How it uses AI
 
-- **Claude (claude-opus-5-5) is the store agent.** It gets one shop's catalog, notes and the merchant's past answers as a cached system block. It returns structured output `{answer, product_ids, answered}`, and is told to say "the shop hasn't published that" instead of guessing, because another agent may act on its answer. `answered: false` routes the question to the merchant.
+- **An OpenAI model (gpt-5.4-mini by default, `OPENAI_MODEL` to change) is the store agent.** It gets one shop's catalog, notes and the merchant's past answers at the front of its instructions, which OpenAI caches automatically. It returns structured output `{answer, product_ids, answered}`, and is told to say "the shop hasn't published that" instead of guessing, because another agent may act on its answer. `answered: false` routes the question to the merchant.
 - **Claude reads existing shops.** For a product page, it gets the page's JSON-LD, image URLs and text and returns a typed catalog (names, prices, options, images). Shopify stores skip the model and convert exactly.
 - **The shopper's own agent** (Claude, ChatGPT, anything that speaks MCP) does the shopping through the MCP tools.
 
@@ -112,7 +112,7 @@ Deploy: `pnpm run db:remote && pnpm run deploy && pnpm run secrets`. To import p
 - **Next.js 15 (App Router) on Cloudflare Workers** via [OpenNext](https://opennext.js.org/cloudflare), with D1 for data and a Workers rate limiter on the AI routes.
 - **AlignUI** components on Tailwind v4 (`src/components/ui`): Button, FancyButton, Input, Select, Switch, StatusBadge, Table, Alert, Divider and the app shell, with AlignUI's design tokens in `src/app/globals.css`.
 - **better-auth** for Log in with PayPal (generic OAuth, `openid email profile`) and anonymous demo accounts.
-- **MCP TypeScript SDK** (stateless Streamable HTTP route handlers), the **Anthropic TypeScript SDK**, the **PayPal Server SDK** (APIMatic) and PayPal REST for the APIs the SDK doesn't cover, all in `src/server/`.
+- **MCP TypeScript SDK** (stateless Streamable HTTP route handlers), OpenAI's Responses API over plain `fetch`, the **PayPal Server SDK** (APIMatic) and PayPal REST for the APIs the SDK doesn't cover, all in `src/server/`.
 - Server components render every page; server actions handle the dashboard forms; client components are the interactive parts (the store assistant, option pickers, switches).
 
 ## Known limits
